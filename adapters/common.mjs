@@ -1,5 +1,10 @@
 import { basename } from 'node:path';
 
+/** Prompts, replies and thoughts reach the floor only when the user opts in. */
+export function sharesConversation(env = process.env) {
+  return env.AGENT_FLOOR_SHARE_PROMPTS === '1';
+}
+
 export function shortId(value, n = 8) {
   return String(value || 'local').replace(/[^a-zA-Z0-9]/g, '').slice(0, n) || 'local';
 }

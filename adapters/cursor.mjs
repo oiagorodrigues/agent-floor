@@ -3,9 +3,9 @@
 // that observe (after*, stop, beforeSubmitPrompt) so Agent Floor can never change
 // a permission decision. See docs/integrations.md for the hooks.json snippet.
 import { basename } from 'node:path';
-import { shortId, teamFromCwd } from './common.mjs';
+import { sharesConversation, shortId, teamFromCwd } from './common.mjs';
 
-export function fromCursor(input) {
+export function fromCursor(input, { sharePrompts = sharesConversation() } = {}) {
   if (!input || typeof input !== 'object') return [];
   const root = Array.isArray(input.workspace_roots) ? input.workspace_roots[0] : undefined;
   const base = {
@@ -19,9 +19,9 @@ export function fromCursor(input) {
 
   switch (input.hook_event_name) {
     case 'beforeSubmitPrompt':
-      return [{ type: 'status', ...base, status: 'thinking', activity: `Asked: ${input.prompt ?? ''}` }];
+      return [{ type: 'status', ...base, status: 'thinking', activity: sharePrompts ? `Asked: ${input.prompt ?? ''}` : 'Working on your request' }];
     case 'afterAgentThought':
-      return [{ type: 'status', ...base, status: 'thinking', activity: input.text || 'Thinking' }];
+      return [{ type: 'status', ...base, status: 'thinking', activity: (sharePrompts && input.text) || 'Thinking' }];
     case 'afterFileEdit':
       return [{ type: 'tool', ...base, tool: 'Edit', activity: `Edited ${f(input.file_path)}` }];
     case 'beforeReadFile':
@@ -33,7 +33,7 @@ export function fromCursor(input) {
     case 'afterMCPExecution':
       return [{ type: 'tool', ...base, tool: 'MCP', activity: `MCP: ${input.tool_name ?? 'tool'}` }];
     case 'afterAgentResponse':
-      return [{ type: 'status', ...base, status: 'thinking', activity: `Replied: ${input.text ?? ''}` }];
+      return [{ type: 'status', ...base, status: 'thinking', activity: sharePrompts ? `Replied: ${input.text ?? ''}` : 'Replied' }];
     case 'stop':
       return [
         {

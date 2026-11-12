@@ -14,8 +14,11 @@ Works with **Claude Code**, **Codex**, **Cursor**, and anything else that can se
 
 ## Quick start
 
+Agent Floor is not published on npm, and an `agent-floor` package there is not this project. Install it from source:
+
 ```bash
-npm i -g agent-floor
+git clone https://github.com/oiagorodrigues/agent-floor
+cd agent-floor && npm ci && npm run build && npm link
 agent-floor setup claude --write
 ```
 
@@ -49,9 +52,24 @@ Coloured magnets on each whiteboard show every team member's status at a glance.
 ### Claude Code
 
 ```bash
-agent-floor setup claude --write     # merges hooks into ~/.claude/settings.json (backup kept)
+agent-floor setup claude --write     # merges hooks into settings.json of every configured Claude config dir
 agent-floor setup claude --project   # prints a snippet for .claude/settings.json in this repo
 ```
+
+`--write` only adds or replaces Agent Floor's own hooks. Every other hook and setting stays as it is, a timestamped backup is kept next to the file, and running it again changes nothing.
+
+If you use more than one Claude config dir (`CLAUDE_CONFIG_DIR`), list them in `~/.agent-floor/config.json`. `setup` installs the hooks in each one, and every session shows which account it runs under, for example "Claude (work)":
+
+```json
+{
+  "claude": {
+    "defaultConfigDir": "~/.claude",
+    "byPath": [{ "path": "~/Workspaces/work", "configDir": "~/.claude-work" }]
+  }
+}
+```
+
+The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
 
 Uses `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStop`, `PreCompact` and `SessionEnd`. Subagents spawned with the Task tool get their own desks and their tool calls show up on their own screens.
 
@@ -74,11 +92,12 @@ Only observing hooks are installed. Agent Floor never answers a permission promp
 
 ### Anything else
 
-Post JSON to `http://localhost:4317/events`:
+Post JSON to `http://localhost:4317/events` with the token from `~/.agent-floor/token`:
 
 ```bash
 curl -X POST localhost:4317/events \
   -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.agent-floor/token)" \
   -d '{"type":"tool","agent":"bot-1","team":"Payments","tool":"Bash","activity":"Running tests"}'
 ```
 
@@ -101,13 +120,16 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 | `AGENT_FLOOR_TEAM` | project folder name | hooks: put this session in a named room |
 | `AGENT_FLOOR_NAME` | `Claude`, `Codex`, `Cursor` | hooks: the lead's display name |
 | `AGENT_FLOOR_AUTOLAUNCH` | `1` | set to `0` so hooks never open the app |
+| `AGENT_FLOOR_SHARE_PROMPTS` | `0` | set to `1` to show your prompts, replies and agent thoughts on the floor |
 
 Group several repos into one room by giving them the same `AGENT_FLOOR_TEAM`.
 
 ## Privacy and safety
 
 - The server binds to `127.0.0.1` and only answers loopback host names.
-- `POST` requires `Content-Type: application/json`, so web pages cannot fire simple cross-site requests at it. CORS is limited to localhost origins.
+- The server sends no CORS headers, so pages on other origins, other localhost ports included, cannot read the stream or post to it.
+- Every `POST` needs `Authorization: Bearer <token>`. The token is created in `~/.agent-floor/token` with owner-only permissions, so other users on the machine cannot post events.
+- Prompts, replies and agent thoughts stay off the floor unless you set `AGENT_FLOOR_SHARE_PROMPTS=1`. Tool activity ("Running npm test", "Editing cart.ts") is still shown.
 - Hooks time out after 1.2 seconds, swallow every error and always exit 0. If the floor is down, your agents never notice.
 - Nothing is stored on disk and nothing is sent anywhere else. Activity text is clipped to 280 characters.
 
@@ -129,7 +151,7 @@ agent-floor emit, curl, your code ───┼──► POST /events ──► r
                                         map native payloads     same reducer runs on both sides
 ```
 
-- `server/` is a zero-dependency Node HTTP server. `npx agent-floor` installs nothing else.
+- `server/` is a zero-dependency Node HTTP server.
 - `shared/protocol.js` is the event reducer, used verbatim by the server and the browser, so a snapshot plus the stream always matches.
 - `adapters/` turn each tool's hook payload into floor events. They are pure functions with tests.
 - `src/world/` is the three.js scene: rooms, desks, characters, paper planes and the camera rig.
@@ -139,9 +161,9 @@ agent-floor emit, curl, your code ───┼──► POST /events ──► r
 ## Develop
 
 ```bash
-git clone https://github.com/develop212/agent-floor
+git clone https://github.com/oiagorodrigues/agent-floor
 cd agent-floor
-npm install
+npm ci
 npm run dev        # floor server on :4317 + Vite on :5173
 npm run demo       # in another terminal, stream fake agents
 npm test           # protocol, adapters, server

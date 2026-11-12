@@ -1,10 +1,10 @@
 # Integrations
 
-Every integration does the same thing: turn "something happened in my agent" into a small JSON event and post it to `http://localhost:4317/events`. The built-in adapters live in `adapters/` and are covered by tests in `test/`.
+Every integration does the same thing: turn "something happened in my agent" into a small JSON event and post it to `http://localhost:4317/events` with `Authorization: Bearer <token>`, where the token is the content of `~/.agent-floor/token`. The built-in adapters live in `adapters/` and are covered by tests in `test/`.
 
 ## Claude Code
 
-`agent-floor setup claude --write` merges this into `~/.claude/settings.json` (a `.bak` copy of the old file is kept):
+`agent-floor setup claude --write` merges this into the `settings.json` of each Claude config dir (a timestamped `.bak` copy of the old file is kept, and all your other hooks and settings stay):
 
 ```json
 {
@@ -16,12 +16,12 @@ Every integration does the same thing: turn "something happened in my agent" int
 }
 ```
 
-The real snippet also covers `UserPromptSubmit`, `Notification`, `Stop`, `SubagentStop`, `PreCompact` and `SessionEnd`, and uses the absolute path of your install so it does not depend on `PATH`.
+The real snippet also covers `UserPromptSubmit`, `Notification`, `Stop`, `SubagentStop`, `PreCompact` and `SessionEnd`. Its command is `node '/absolute/path/bin/agent-floor.mjs' hook claude --config-dir '<dir>'`, so it never depends on `PATH` or on a package registry.
 
 | Hook | On the floor |
 | --- | --- |
 | `SessionStart` | The lead walks in. |
-| `UserPromptSubmit` | Thinking, with your prompt as the activity. |
+| `UserPromptSubmit` | Thinking. Your prompt is shown only with `AGENT_FLOOR_SHARE_PROMPTS=1`. |
 | `PreToolUse` | Working. The monitor shows the tool and a readable summary ("Running npm test", "Editing cart.ts"). |
 | `PreToolUse` on `Task` / `Agent` | A helper walks in and gets a briefing plane with the task description. |
 | `PreToolUse` on `TodoWrite` | The current todo goes on the team whiteboard. |
@@ -69,13 +69,15 @@ Hooks that gate permissions (`beforeShellExecution`, `beforeMCPExecution`, `befo
 ### Python
 
 ```python
-import json, urllib.request
+import json, pathlib, urllib.request
+
+TOKEN = (pathlib.Path.home() / ".agent-floor" / "token").read_text().strip()
 
 def floor(**event):
     req = urllib.request.Request(
         "http://localhost:4317/events",
         data=json.dumps(event).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {TOKEN}"},
     )
     try:
         urllib.request.urlopen(req, timeout=1)
@@ -93,10 +95,14 @@ This drops straight into LangGraph nodes, CrewAI task callbacks, AutoGen message
 ### TypeScript
 
 ```ts
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+
+const token = readFileSync(`${homedir()}/.agent-floor/token`, 'utf8').trim();
 const floor = (event: Record<string, unknown>) =>
   fetch('http://localhost:4317/events', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(event),
   }).catch(() => {});
 

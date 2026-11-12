@@ -5,10 +5,14 @@
 //   GET  /state         current world as JSON
 //   POST /reset         clear the floor
 //   GET  /*             the built web app (dist/)
+//
+// POSTs need `Authorization: Bearer <token>` (the token lives in ~/.agent-floor/token).
+import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import localState from '../desktop/state.cjs';
 import { applyEvent, createState, normalizeEvent, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -30,7 +34,9 @@ export function startServer({
   host = process.env.AGENT_FLOOR_HOST || '127.0.0.1',
   staticDir = resolve(here, '../dist'),
   log = console.log,
+  token = localState.readToken(),
 } = {}) {
+  const expected = Buffer.from(`Bearer ${token}`);
   const state = createState();
   const clients = new Set();
 
@@ -67,15 +73,9 @@ export function startServer({
     return text ? JSON.parse(text) : null;
   }
 
-  function cors(req, res) {
-    // Local tool: allow any localhost origin plus the hosted demo to talk to it.
-    const origin = req.headers.origin;
-    if (origin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    }
+  function isAuthorized(req) {
+    const given = Buffer.from(String(req.headers.authorization || ''));
+    return given.length === expected.length && timingSafeEqual(given, expected);
   }
 
   function json(res, status, body) {
@@ -112,13 +112,14 @@ export function startServer({
     if (loopback && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '')) {
       return json(res, 403, { error: 'Forbidden host' });
     }
-    cors(req, res);
-    if (req.method === 'OPTIONS') return res.writeHead(204).end();
     const { pathname } = new URL(req.url, 'http://x');
-    // Requiring JSON forces a CORS preflight, so random web pages cannot post
-    // "simple" form requests to your floor. curl and the hooks send this header.
+    // No CORS headers are ever sent, so pages on other origins (including other
+    // localhost ports) can neither read the stream nor pass a JSON preflight.
     if (req.method === 'POST' && !String(req.headers['content-type'] || '').includes('application/json')) {
       return json(res, 415, { error: 'Send Content-Type: application/json' });
+    }
+    if (req.method === 'POST' && !isAuthorized(req)) {
+      return json(res, 401, { error: 'Send Authorization: Bearer <token from ~/.agent-floor/token>' });
     }
 
     try {

@@ -1,4 +1,5 @@
 // Small bits of state shared by the desktop app and the hooks, kept in ~/.agent-floor.
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -6,9 +7,38 @@ const path = require('node:path');
 const DIR = process.env.AGENT_FLOOR_HOME || path.join(os.homedir(), '.agent-floor');
 const SNOOZE = path.join(DIR, 'snoozed-until');
 const LOCK = path.join(DIR, 'launch.lock');
+const TOKEN = path.join(DIR, 'token');
+const CONFIG = path.join(DIR, 'config.json');
 
 function ensureDir() {
-  fs.mkdirSync(DIR, { recursive: true });
+  fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
+}
+
+/**
+ * Shared secret that hooks send with every POST. Created on first use with
+ * owner-only permissions, so other users on the machine cannot post events.
+ */
+function readToken() {
+  ensureDir();
+  try {
+    fs.writeFileSync(TOKEN, crypto.randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+  }
+  if ((fs.statSync(TOKEN).mode & 0o077) !== 0) fs.chmodSync(TOKEN, 0o600);
+  return fs.readFileSync(TOKEN, 'utf8').trim();
+}
+
+/** User settings from ~/.agent-floor/config.json. A missing file means defaults. */
+function readConfig() {
+  let text;
+  try {
+    text = fs.readFileSync(CONFIG, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return {};
+    throw err;
+  }
+  return JSON.parse(text);
 }
 
 /** Stop hooks from opening the app for `hours`. */
@@ -46,4 +76,4 @@ function takeLaunchLock(staleMs = 20_000) {
   }
 }
 
-module.exports = { DIR, snooze, isSnoozed, takeLaunchLock };
+module.exports = { DIR, CONFIG, snooze, isSnoozed, takeLaunchLock, readToken, readConfig };

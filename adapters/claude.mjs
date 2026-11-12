@@ -1,25 +1,28 @@
 // Claude Code hooks -> Agent Floor events.
 // Receives the JSON object Claude Code writes to a hook's stdin.
 // https://docs.claude.com/en/docs/claude-code/hooks
-import { describeTool, pretty, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
+import { describeTool, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
 
 const SPAWN_TOOLS = new Set(['Task', 'Agent']);
 
 /**
  * @param {Record<string, any>} input hook payload
- * @param {{ source?: string, name?: string }} [opts]
+ * @param {{ source?: string, name?: string, account?: string | null, sharePrompts?: boolean }} [opts]
+ *   account: label of the Claude config dir the session runs under, shown next to the name
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
 export function fromClaude(input, opts = {}) {
   if (!input || typeof input !== 'object') return [];
   const source = opts.source || 'claude-code';
+  const share = opts.sharePrompts ?? sharesConversation();
   const lead = `${source}:${shortId(input.session_id)}`;
   const team = teamFromCwd(input.cwd);
+  const name = process.env.AGENT_FLOOR_NAME || opts.name || (source === 'codex' ? 'Codex' : 'Claude');
   const base = {
     agent: lead,
     team,
     source,
-    name: process.env.AGENT_FLOOR_NAME || opts.name || (source === 'codex' ? 'Codex' : 'Claude'),
+    name: opts.account ? `${name} (${opts.account})` : name,
     role: 'Lead',
   };
   // Inside a subagent, newer Claude Code versions add agent_id / agent_type.
@@ -34,7 +37,7 @@ export function fromClaude(input, opts = {}) {
       return [{ type: 'join', ...base, status: 'idle', activity: 'Ready' }];
 
     case 'UserPromptSubmit':
-      return [{ type: 'status', ...base, status: 'thinking', activity: `Asked: ${input.prompt ?? ''}` }];
+      return [{ type: 'status', ...base, status: 'thinking', activity: share ? `Asked: ${input.prompt ?? ''}` : 'Working on your request' }];
 
     case 'PreToolUse': {
       if (SPAWN_TOOLS.has(tool)) {
@@ -52,7 +55,7 @@ export function fromClaude(input, opts = {}) {
             role: type,
             status: 'thinking',
             activity: toolInput.description || 'Starting',
-            text: toolInput.description || toolInput.prompt,
+            text: toolInput.description || (share ? toolInput.prompt : undefined),
           },
         ];
       }

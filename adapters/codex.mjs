@@ -5,11 +5,11 @@
 // pass a Claude-style payload ({ hook_event_name, ... }) on stdin; those are routed
 // through the Claude mapper with source "codex".
 import { fromClaude } from './claude.mjs';
-import { shortId, teamFromCwd } from './common.mjs';
+import { sharesConversation, shortId, teamFromCwd } from './common.mjs';
 
-export function fromCodex(input) {
+export function fromCodex(input, { sharePrompts = sharesConversation() } = {}) {
   if (!input || typeof input !== 'object') return [];
-  if (input.hook_event_name) return fromClaude(input, { source: 'codex', name: 'Codex' });
+  if (input.hook_event_name) return fromClaude(input, { source: 'codex', name: 'Codex', sharePrompts });
 
   const thread = input['thread-id'] || input.thread_id || input.session_id;
   const base = {
@@ -25,8 +25,8 @@ export function fromCodex(input) {
       const asked = Array.isArray(input['input-messages']) ? input['input-messages'].at(-1) : undefined;
       const answer = input['last-assistant-message'];
       const events = [];
-      if (asked) events.push({ type: 'status', ...base, status: 'thinking', activity: `Asked: ${asked}` });
-      events.push({ type: 'status', ...base, status: 'idle', activity: answer ? `Replied: ${answer}` : 'Turn complete' });
+      if (asked && sharePrompts) events.push({ type: 'status', ...base, status: 'thinking', activity: `Asked: ${asked}` });
+      events.push({ type: 'status', ...base, status: 'idle', activity: answer && sharePrompts ? `Replied: ${answer}` : 'Turn complete' });
       return events;
     }
     case 'approval-requested':

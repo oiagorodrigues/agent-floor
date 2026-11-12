@@ -68,6 +68,38 @@ test('codex notify payload', () => {
   assert.equal(evs[0].team, 'api');
 });
 
+test('prompts, replies and thoughts stay off the floor unless shared', () => {
+  const claudePrompt = { hook_event_name: 'UserPromptSubmit', session_id: 's1', cwd: '/x/shop', prompt: 'my secret plan' };
+  const spawn = { hook_event_name: 'PreToolUse', session_id: 's1', cwd: '/x/shop', tool_name: 'Task', tool_use_id: 'tu_1', tool_input: { subagent_type: 'explorer', prompt: 'secret brief' } };
+  const codexTurn = { type: 'agent-turn-complete', 'thread-id': 't-1', cwd: '/a/api', 'input-messages': ['secret ask'], 'last-assistant-message': 'secret answer' };
+  const cursorEvents = ['beforeSubmitPrompt', 'afterAgentThought', 'afterAgentResponse'].map((hook_event_name) => ({
+    hook_event_name,
+    conversation_id: 'c1',
+    prompt: 'secret ask',
+    text: 'secret thought',
+  }));
+  const hidden = [
+    ...fromClaude(claudePrompt, { sharePrompts: false }),
+    ...fromClaude(spawn, { sharePrompts: false }),
+    ...fromCodex(codexTurn, { sharePrompts: false }),
+    ...cursorEvents.flatMap((e) => fromCursor(e, { sharePrompts: false })),
+  ];
+  assert.doesNotMatch(JSON.stringify(hidden), /secret/);
+  assert.equal(fromClaude(claudePrompt, { sharePrompts: false })[0].status, 'thinking');
+  assert.equal(fromCodex(codexTurn, { sharePrompts: false }).at(-1).activity, 'Turn complete');
+
+  assert.equal(fromClaude(claudePrompt, { sharePrompts: true })[0].activity, 'Asked: my secret plan');
+  assert.equal(fromClaude(spawn, { sharePrompts: true })[1].text, 'secret brief');
+  assert.equal(fromCodex(codexTurn, { sharePrompts: true }).at(-1).activity, 'Replied: secret answer');
+  assert.equal(fromCursor(cursorEvents[1], { sharePrompts: true })[0].activity, 'secret thought');
+});
+
+test('claude adapter shows the account next to the lead name', () => {
+  const start = { hook_event_name: 'SessionStart', session_id: 's1', cwd: '/x/shop' };
+  assert.equal(fromClaude(start, { account: 'work' })[0].name, 'Claude (work)');
+  assert.equal(fromClaude(start, { account: null })[0].name, 'Claude');
+});
+
 test('cursor adapter only answers beforeSubmitPrompt', () => {
   const evs = fromCursor({ hook_event_name: 'afterFileEdit', conversation_id: 'c1', workspace_roots: ['/w/site'], file_path: '/w/site/a.md' });
   assert.equal(evs[0].activity, 'Edited a.md');

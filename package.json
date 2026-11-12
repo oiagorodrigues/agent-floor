@@ -12,6 +12,7 @@
     "bin",
     "desktop",
     "dist",
+    "lib",
     "server",
     "shared"
   ],
@@ -50,11 +51,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/develop212/agent-floor.git"
+    "url": "git+https://github.com/oiagorodrigues/agent-floor.git"
   },
-  "homepage": "https://github.com/develop212/agent-floor#readme",
+  "homepage": "https://github.com/oiagorodrigues/agent-floor#readme",
   "bugs": {
-    "url": "https://github.com/develop212/agent-floor/issues"
+    "url": "https://github.com/oiagorodrigues/agent-floor/issues"
   },
   "optionalDependencies": {
     "electron": "44.10.0"

@@ -1,6 +1,6 @@
 # Event protocol (v1)
 
-Agents talk to the floor by posting JSON to `POST /events`. Send one object or an array of up to 200. The request must have `Content-Type: application/json`.
+Agents talk to the floor by posting JSON to `POST /events`. Send one object or an array of up to 200. The request must have `Content-Type: application/json` and `Authorization: Bearer <token>`, with the token from `~/.agent-floor/token`. Without the token the server answers `401`.
 
 Only `type` and `agent` are required. Any event creates the agent and its team if they do not exist yet, so the smallest useful integration is a single `status` call.
 
@@ -57,6 +57,6 @@ The floor binds the hint to the oldest unbound helper of that `role` under `lead
 - `GET /stream`: Server-Sent Events. First a `snapshot` with the full state, then `event` frames (`{ event, effects }`) and `removed` frames (`{ agents: [...] }`).
 - `GET /state`: the current world as JSON.
 - `GET /health`: `{ ok, version, agents }`.
-- `POST /reset`: clear the floor.
+- `POST /reset`: clear the floor. Needs the token like `/events`.
 
 The reducer that turns events into state is `shared/protocol.js`. It has no dependencies, so you can import it to build other views on the same stream.

@@ -6,13 +6,14 @@
 //   agent-floor emit --agent id --status working --activity "..."  [--team x] [--to id --text "..."]
 //   agent-floor setup <claude|codex|cursor> [--write] [--project]
 //   agent-floor demo                             push a scripted demo into a running floor
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { accountLabel, claudeConfigDirFor, claudeConfigDirs } from '../lib/accounts.mjs';
+import { mergeClaudeHooks, mergeCursorHooks, updateJsonFile } from '../lib/settings.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SELF = resolve(here, 'agent-floor.mjs');
@@ -20,6 +21,7 @@ const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
 const URL_BASE = (process.env.AGENT_FLOOR_URL || `http://127.0.0.1:${PORT}`).replace(/\/$/, '');
 const IS_LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(URL_BASE);
 const require = createRequire(import.meta.url);
+const localState = require('../desktop/state.cjs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const [, , cmd = 'app', ...rest] = process.argv;
@@ -48,7 +50,7 @@ async function post(events) {
   try {
     await fetch(`${URL_BASE}/events`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localState.readToken()}` },
       body: JSON.stringify(events),
       signal: ctrl.signal,
     });
@@ -97,9 +99,8 @@ async function postOrLaunch(events) {
     /* not running (or slow); fall through */
   }
   if (!IS_LOCAL || process.env.AGENT_FLOOR_AUTOLAUNCH === '0') return;
-  const { isSnoozed, takeLaunchLock } = require('../desktop/state.cjs');
-  if (isSnoozed()) return;
-  if (takeLaunchLock()) await openApp({ fromHook: true });
+  if (localState.isSnoozed()) return;
+  if (localState.takeLaunchLock()) await openApp({ fromHook: true });
   // Wait for the floor (ours or one another hook is starting), then resend.
   for (let i = 0; i < 35; i++) {
     await sleep(100);
@@ -176,12 +177,21 @@ async function app(args) {
 // ---------------------------------------------------------------- hook
 // A hook must never slow down or break the agent. Every failure is swallowed
 // and the process always exits 0.
+function claudeAccount(cwd, installedFor) {
+  const config = localState.readConfig();
+  const home = homedir();
+  const dir = claudeConfigDirFor({ installedFor, envDir: process.env.CLAUDE_CONFIG_DIR, cwd, config, home });
+  return accountLabel(dir, config, home);
+}
+
 async function hook(kind) {
   let response = '';
   try {
     if (kind === 'claude') {
       const { fromClaude } = await import('../adapters/claude.mjs');
-      await postOrLaunch(fromClaude(parseJson(await readStdin())));
+      const input = parseJson(await readStdin());
+      const account = claudeAccount(input?.cwd, flags(rest.slice(1))['config-dir']);
+      await postOrLaunch(fromClaude(input, { account }));
     } else if (kind === 'codex') {
       const { fromCodex } = await import('../adapters/codex.mjs');
       // notify passes JSON as the last argv entry; hooks pass it on stdin.
@@ -232,13 +242,13 @@ async function emit(args) {
 }
 
 // ---------------------------------------------------------------- setup
-// When run through `npx`, this file lives in a throwaway cache, so point hooks
-// at the package name instead of the file path.
-const viaNpx = /[\\/]_npx[\\/]/.test(SELF);
-const hookCmd = (kind) => (viaNpx ? `npx -y agent-floor hook ${kind}` : `node "${SELF}" hook ${kind}`);
+// Hooks always run this local file, never a package fetched from the registry.
+const shellQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const hookCmd = (kind, configDir) =>
+  `node ${shellQuote(SELF)} hook ${kind}` + (configDir ? ` --config-dir ${shellQuote(configDir)}` : '');
 
-function claudeHooks() {
-  const command = hookCmd('claude');
+function claudeHooks(configDir) {
+  const command = hookCmd('claude', configDir);
   const events = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SubagentStop', 'PreCompact', 'SessionEnd'];
   const hooks = {};
   for (const e of events) {
@@ -255,42 +265,29 @@ function cursorHooks() {
   return { version: 1, hooks: Object.fromEntries(names.map((n) => [n, [{ command }]])) };
 }
 
-async function readJsonFile(path) {
-  if (!existsSync(path)) return {};
-  const parsed = parseJson(await readFile(path, 'utf8'));
-  if (!parsed) throw new Error(`${path} is not valid JSON. Fix it or merge the snippet by hand.`);
-  return parsed;
-}
-
-async function backupAndWrite(path, data) {
-  await mkdir(dirname(path), { recursive: true });
-  if (existsSync(path)) await copyFile(path, `${path}.bak`);
-  await writeFile(path, JSON.stringify(data, null, 2) + '\n');
-}
-
-function isOurs(entry) {
-  return JSON.stringify(entry).includes('agent-floor');
+async function writeHooks(path, merge, opens) {
+  const { changed, backup } = await updateJsonFile(path, merge);
+  if (!changed) console.log(`${path} already has the current Agent Floor hooks.`);
+  else console.log(`Merged Agent Floor hooks into ${path}${backup ? ` (backup at ${backup})` : ''}. ${opens}`);
 }
 
 async function setup(args) {
   const f = flags(args);
   const kind = f._[0];
   if (kind === 'claude') {
-    const hooks = claudeHooks();
-    const path = f.project ? resolve('.claude/settings.json') : join(homedir(), '.claude', 'settings.json');
-    if (!f.write) {
-      console.log(`Add this to ${path} (or rerun with --write to merge it for you):\n`);
-      console.log(JSON.stringify({ hooks }, null, 2));
-      return;
+    // --project writes no --config-dir: the hook then tells accounts apart by
+    // CLAUDE_CONFIG_DIR or the folder rules in ~/.agent-floor/config.json.
+    const targets = f.project
+      ? [{ path: resolve('.claude/settings.json'), hooks: claudeHooks() }]
+      : claudeConfigDirs(localState.readConfig(), homedir()).map((dir) => ({ path: join(dir, 'settings.json'), hooks: claudeHooks(dir) }));
+    for (const { path, hooks } of targets) {
+      if (!f.write) {
+        console.log(`Add this to ${path} (or rerun with --write to merge it for you):\n`);
+        console.log(JSON.stringify({ hooks }, null, 2) + '\n');
+        continue;
+      }
+      await writeHooks(path, (settings) => mergeClaudeHooks(settings, hooks), 'Agent Floor will open by itself the next time a Claude Code session starts.');
     }
-    const settings = await readJsonFile(path);
-    settings.hooks ||= {};
-    for (const [event, entries] of Object.entries(hooks)) {
-      const kept = (settings.hooks[event] || []).filter((e) => !isOurs(e));
-      settings.hooks[event] = [...kept, ...entries];
-    }
-    await backupAndWrite(path, settings);
-    console.log(`Merged Agent Floor hooks into ${path} (backup at ${path}.bak). Agent Floor will open by itself the next time a Claude Code session starts.`);
   } else if (kind === 'cursor') {
     const config = cursorHooks();
     const path = f.project ? resolve('.cursor/hooks.json') : join(homedir(), '.cursor', 'hooks.json');
@@ -299,19 +296,11 @@ async function setup(args) {
       console.log(JSON.stringify(config, null, 2));
       return;
     }
-    const current = await readJsonFile(path);
-    current.version ||= 1;
-    current.hooks ||= {};
-    for (const [event, entries] of Object.entries(config.hooks)) {
-      const kept = (current.hooks[event] || []).filter((e) => !isOurs(e));
-      current.hooks[event] = [...kept, ...entries];
-    }
-    await backupAndWrite(path, current);
-    console.log(`Merged Agent Floor hooks into ${path} (backup at ${path}.bak). Agent Floor will open by itself the next time a Cursor agent runs.`);
+    await writeHooks(path, (current) => mergeCursorHooks(current, config), 'Agent Floor will open by itself the next time a Cursor agent runs.');
   } else if (kind === 'codex') {
     const path = join(homedir(), '.codex', 'config.toml');
     console.log(`Add this line near the top of ${path}:\n`);
-    console.log(viaNpx ? 'notify = ["npx", "-y", "agent-floor", "hook", "codex"]\n' : `notify = ["node", "${SELF}", "hook", "codex"]\n`);
+    console.log(`notify = ["node", ${JSON.stringify(SELF)}, "hook", "codex"]\n`);
     console.log('Codex allows one notify program. If you already have one, chain them in a small script.');
   } else {
     console.log('Usage: agent-floor setup <claude|codex|cursor> [--write] [--project]');

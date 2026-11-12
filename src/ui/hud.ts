@@ -53,15 +53,15 @@ const SETUP: Record<string, { title: string; steps: { label: string; code: strin
   claude: {
     title: 'Claude Code',
     steps: [
-      { label: 'Install', code: 'npm i -g agent-floor' },
-      { label: 'Add the hooks to ~/.claude/settings.json', code: 'agent-floor setup claude --write' },
+      { label: 'Install from source', code: 'git clone https://github.com/oiagorodrigues/agent-floor\ncd agent-floor && npm ci && npm run build && npm link' },
+      { label: 'Add the hooks to each Claude config dir', code: 'agent-floor setup claude --write' },
     ],
     note: 'Agent Floor opens by itself when a session starts. Every session gets an office named after its project folder; subagents walk in, get briefed, and report back.',
   },
   codex: {
     title: 'Codex',
     steps: [
-      { label: 'Install', code: 'npm i -g agent-floor' },
+      { label: 'Install from source', code: 'git clone https://github.com/oiagorodrigues/agent-floor\ncd agent-floor && npm ci && npm run build && npm link' },
       { label: 'Print the notify line for ~/.codex/config.toml', code: 'agent-floor setup codex' },
     ],
     note: 'Codex reports at the end of each turn, so its desk updates once per reply.',
@@ -69,7 +69,7 @@ const SETUP: Record<string, { title: string; steps: { label: string; code: strin
   cursor: {
     title: 'Cursor',
     steps: [
-      { label: 'Install', code: 'npm i -g agent-floor' },
+      { label: 'Install from source', code: 'git clone https://github.com/oiagorodrigues/agent-floor\ncd agent-floor && npm ci && npm run build && npm link' },
       { label: 'Add the hooks to ~/.cursor/hooks.json', code: 'agent-floor setup cursor --write' },
     ],
     note: 'Agent Floor only listens. It never answers a permission prompt for you.',
@@ -77,10 +77,10 @@ const SETUP: Record<string, { title: string; steps: { label: string; code: strin
   http: {
     title: 'Anything else',
     steps: [
-      { label: 'Start the floor', code: 'npx agent-floor' },
+      { label: 'Start the floor', code: 'agent-floor start' },
       {
         label: 'Post an event from any language',
-        code: `curl -X POST localhost:4317/events \\\n  -H 'content-type: application/json' \\\n  -d '{"type":"tool","agent":"bot-1","team":"Payments","tool":"Bash","activity":"Running tests"}'`,
+        code: `curl -X POST localhost:4317/events \\\n  -H 'content-type: application/json' \\\n  -H "authorization: Bearer $(cat ~/.agent-floor/token)" \\\n  -d '{"type":"tool","agent":"bot-1","team":"Payments","tool":"Bash","activity":"Running tests"}'`,
       },
     ],
     note: 'Events: join, status, tool, message, task, leave. See docs/protocol.md.',
