@@ -14,9 +14,11 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import localState from '../desktop/state.cjs';
 import { applyEvent, createState, normalizeEvent, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
+import { pickName } from './names.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MAX_BODY = 256 * 1024;
+const HOOK_SOURCES = new Set(['claude-code', 'codex', 'cursor']);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -35,6 +37,7 @@ export function startServer({
   staticDir = resolve(here, '../dist'),
   log = console.log,
   token = localState.readToken(),
+  randomNames = process.env.AGENT_FLOOR_RANDOM_NAMES !== '0',
 } = {}) {
   const expected = Buffer.from(`Bearer ${token}`);
   const state = createState();
@@ -45,9 +48,21 @@ export function startServer({
     for (const res of clients) res.write(frame);
   }
 
+  // Hook adapters send the same name ("Claude") for every session, so the floor
+  // gives each of their agents its own first name and keeps it for its lifetime.
+  function nameAgent(ev) {
+    const existing = state.agents[ev.agent];
+    if (existing) {
+      if (ev.name && HOOK_SOURCES.has(existing.source)) ev.name = existing.name;
+    } else if (HOOK_SOURCES.has(ev.source)) {
+      ev.name = pickName(new Set(Object.values(state.agents).map((a) => a.name)));
+    }
+  }
+
   function ingest(raw) {
     const ev = normalizeEvent(raw);
     if (!ev) return false;
+    if (randomNames && ev.type !== 'reset') nameAgent(ev);
     const { effects } = applyEvent(state, ev);
     broadcast('event', { event: ev, effects });
     return true;

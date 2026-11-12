@@ -8,21 +8,22 @@ const SPAWN_TOOLS = new Set(['Task', 'Agent']);
 /**
  * @param {Record<string, any>} input hook payload
  * @param {{ source?: string, name?: string, account?: string | null, sharePrompts?: boolean }} [opts]
- *   account: label of the Claude config dir the session runs under, shown next to the name
+ *   account: label of the Claude config dir the session runs under, shown on the agent card
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
 export function fromClaude(input, opts = {}) {
   if (!input || typeof input !== 'object') return [];
   const source = opts.source || 'claude-code';
   const share = opts.sharePrompts ?? sharesConversation();
+  const account = opts.account || undefined;
   const lead = `${source}:${shortId(input.session_id)}`;
   const team = teamFromCwd(input.cwd);
-  const name = process.env.AGENT_FLOOR_NAME || opts.name || (source === 'codex' ? 'Codex' : 'Claude');
   const base = {
     agent: lead,
     team,
     source,
-    name: opts.account ? `${name} (${opts.account})` : name,
+    account,
+    name: process.env.AGENT_FLOOR_NAME || opts.name || (source === 'codex' ? 'Codex' : 'Claude'),
     role: 'Lead',
   };
   // Inside a subagent, newer Claude Code versions add agent_id / agent_type.
@@ -51,6 +52,7 @@ export function fromClaude(input, opts = {}) {
             parent: lead,
             team,
             source,
+            account,
             name: pretty(type),
             role: type,
             status: 'thinking',

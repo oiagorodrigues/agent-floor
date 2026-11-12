@@ -125,11 +125,21 @@ function findChromium() {
   return null;
 }
 
+const APP_MODES = ['desktop', 'browser'];
+
+/** "desktop" (default) or "browser", from AGENT_FLOOR_APP or "app" in ~/.agent-floor/config.json. */
+function appMode() {
+  const mode = process.env.AGENT_FLOOR_APP || localState.readConfig().app || 'desktop';
+  if (!APP_MODES.includes(mode)) throw new Error(`Unknown app mode "${mode}". Use ${APP_MODES.join(' or ')}.`);
+  return mode;
+}
+
 /**
  * Open the floor in its own window. Prefers the Electron desktop app; falls
  * back to a Chromium "app window" (no tabs, no address bar), then the browser.
+ * In browser mode it goes straight to a normal tab in the default browser.
  */
-async function openApp({ fromHook = false, browser = false } = {}) {
+async function openApp({ fromHook = false, browser = appMode() === 'browser' } = {}) {
   const detached = { detached: true, stdio: 'ignore' };
   let electron = null;
   if (!browser) {
@@ -150,8 +160,8 @@ async function openApp({ fromHook = false, browser = false } = {}) {
     spawn(process.execPath, [SELF, 'start'], detached).unref();
     for (let i = 0; i < 30 && !(await healthy()); i++) await sleep(100);
   }
-  const url = `http://127.0.0.1:${PORT}/?app=1`;
   const chromium = browser ? null : findChromium();
+  const url = `http://127.0.0.1:${PORT}/${chromium ? '?app=1' : ''}`;
   if (chromium?.mac) spawn('open', ['-na', chromium.mac, '--args', `--app=${url}`, '--new-window'], detached).unref();
   else if (chromium?.bin) spawn(chromium.bin, [`--app=${url}`], detached).unref();
   else {
@@ -164,7 +174,7 @@ async function openApp({ fromHook = false, browser = false } = {}) {
 
 async function app(args) {
   const f = flags(args);
-  const how = await openApp({ browser: Boolean(f.browser) });
+  const how = await openApp(f.browser ? { browser: true } : {});
   console.log(
     how === 'desktop'
       ? 'Agent Floor is opening in its own window. It keeps running in the menu bar when you close it.'

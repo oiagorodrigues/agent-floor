@@ -252,7 +252,7 @@ export class Hud {
       </div>
       <div class="status-row">
         <span class="status-chip" style="--c:${color}"><span class="dot"></span>${STATUS_LABEL[a.status]}</span>
-        <span class="source">${esc(sourceLabel(a.source))}</span>
+        <span class="source">${esc(sourceLabel(a.source))}${a.account ? ` · ${esc(a.account)}` : ''}</span>
       </div>
       <div class="now">
         <p class="now-text">${esc(a.activity || 'Nothing yet')}</p>

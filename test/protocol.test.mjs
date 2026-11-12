@@ -94,10 +94,15 @@ test('prompts, replies and thoughts stay off the floor unless shared', () => {
   assert.equal(fromCursor(cursorEvents[1], { sharePrompts: true })[0].activity, 'secret thought');
 });
 
-test('claude adapter shows the account next to the lead name', () => {
+test('claude account reaches the lead and its helpers', () => {
+  const s = createState();
   const start = { hook_event_name: 'SessionStart', session_id: 's1', cwd: '/x/shop' };
-  assert.equal(fromClaude(start, { account: 'work' })[0].name, 'Claude (work)');
-  assert.equal(fromClaude(start, { account: null })[0].name, 'Claude');
+  const spawn = { hook_event_name: 'PreToolUse', session_id: 's1', cwd: '/x/shop', tool_name: 'Task', tool_use_id: 'tu_1', tool_input: { subagent_type: 'explorer' } };
+  for (const ev of [...fromClaude(start, { account: 'work' }), ...fromClaude(spawn, { account: 'work' })]) run(s, ev);
+  const agents = Object.values(s.agents);
+  assert.equal(agents.length, 2);
+  assert.ok(agents.every((a) => a.account === 'work'));
+  assert.equal(fromClaude(start, { account: null })[0].account, undefined);
 });
 
 test('cursor adapter only answers beforeSubmitPrompt', () => {
