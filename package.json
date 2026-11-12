@@ -57,6 +57,9 @@
     "url": "https://github.com/develop212/agent-floor/issues"
   },
   "optionalDependencies": {
-    "electron": "^44.7.0"
+    "electron": "44.10.0"
+  },
+  "overrides": {
+    "undici": "7.30.1"
   }
 }
