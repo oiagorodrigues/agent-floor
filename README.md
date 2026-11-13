@@ -275,6 +275,24 @@ npm run build      # typecheck + production build into dist/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how the scene is put together and what makes a good adapter.
 
+## Roadmap
+
+Nothing here is scheduled yet (TBD).
+
+### Cloud bots: Grok Bot and ChatGPT Dots
+
+Grok Bot (https://x.ai/bot) and ChatGPT Dots (https://chatgpt.com/pt-BR/features/dots/) run each agent on its own computer in the vendor's cloud. Neither one documents hooks, webhooks or an event API, so the floor can't watch them the way it watches agents on your machine. Three paths to check:
+
+- Dots can connect to your computer. If it runs Codex there, the Codex adapter may already pick it up.
+- Grok Build (https://x.ai/build) looks like xAI's local coding agent. If it has hooks, it becomes a normal adapter.
+- A Slack app could read what the bots post in a channel and show it on the floor. That only shows what a bot writes, not what it does.
+
+Watching bots on remote computers also means the server has to accept connections from outside `127.0.0.1`, with real authentication.
+
+### Local task board
+
+A small kanban per room, so a crew can read and update its tasks without paying for Jira MCP calls. Each task would keep its stages, decisions and handoffs, agents would use it through the CLI or the HTTP API with short text replies, and a finished task would send its summary and decisions to the matching Jira ticket. It needs a brainstorm before anyone builds it: where tasks are stored (the floor keeps almost nothing on disk today), how it syncs with Jira, and how cloud bots reach it.
+
 ## License
 
 MIT
