@@ -7,6 +7,8 @@
 //   agent-floor setup <claude|codex|cursor> [--write] [--project]
 //   agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]
 //   agent-floor demo                             push a scripted demo into a running floor
+//   agent-floor stop                             stop the running floor and pause auto-open for 6 hours
+//   agent-floor quiet [hours]                    pause auto-open from hooks (default 6 hours)
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -89,7 +91,7 @@ async function healthy() {
 /**
  * Send events; if the floor is not running, open the desktop app and resend.
  * Guarded so it never spams windows: one launcher at a time (lock file), a
- * snooze after "Quit", and AGENT_FLOOR_AUTOLAUNCH=0 to turn it off.
+ * snooze after "Quit", `stop` or `quiet`, and AGENT_FLOOR_AUTOLAUNCH=0 to turn it off.
  */
 async function postOrLaunch(events) {
   if (!events.length) return;
@@ -345,6 +347,50 @@ async function start(args) {
   }
 }
 
+// ---------------------------------------------------------------- quiet / stop
+// Same pause as the tray's "Quit (pause auto-open for 6 hours)".
+const QUIET_HOURS = 6;
+const plural = (n) => `${n} hour${n === 1 ? '' : 's'}`;
+
+async function quiet(args) {
+  const arg = flags(args)._[0];
+  const hours = arg === undefined ? QUIET_HOURS : Number(arg);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    console.error(`Usage: agent-floor quiet [hours]   (a number above 0, default ${QUIET_HOURS})`);
+    process.exit(1);
+  }
+  localState.snooze(hours);
+  console.log(`Hooks will not open Agent Floor for ${plural(hours)}. A floor that is already running keeps running; agent-floor stop stops it.`);
+}
+
+async function stop() {
+  // Pause first: otherwise the next hook (even the one for this very command) opens the floor again.
+  localState.snooze(QUIET_HOURS);
+  let res;
+  try {
+    res = await fetch(`${URL_BASE}/shutdown`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localState.readToken()}` },
+      body: '{}',
+      signal: AbortSignal.timeout(2000),
+    });
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      console.error(`The floor at ${URL_BASE} did not answer within 2 seconds.`);
+      process.exit(1);
+    }
+    if (err.cause?.code !== 'ECONNREFUSED') throw err;
+    console.log(`No floor is running at ${URL_BASE}. Hooks will not open it for ${plural(QUIET_HOURS)}.`);
+    return;
+  }
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({}));
+    console.error(`The floor at ${URL_BASE} did not stop: HTTP ${res.status}${error ? ` (${error})` : ''}.`);
+    process.exit(1);
+  }
+  console.log(`Stopped the floor at ${URL_BASE}. Hooks will not open it again for ${plural(QUIET_HOURS)}; run agent-floor to open it yourself.`);
+}
+
 // ---------------------------------------------------------------- demo
 async function demo(args) {
   const f = flags(args);
@@ -368,7 +414,7 @@ async function demo(args) {
   }
 }
 
-const commands = { app, start, hook: () => hook(rest[0]), emit, setup, demo };
+const commands = { app, start, hook: () => hook(rest[0]), emit, setup, demo, stop, quiet };
 if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
   console.log(`agent-floor: a live 3D office for your coding agents
 
@@ -378,6 +424,8 @@ if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
   agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]   (for claude --settings)
   agent-floor emit --agent <id> --status working --activity "Writing tests" [--team checkout]
   agent-floor demo [--agents 60]          (stress test with many agents)
+  agent-floor stop                         stop the floor (and the desktop app); hooks wait 6 hours to reopen it
+  agent-floor quiet [hours]                hooks don't open the floor for a while (default 6); a running floor stays up
   agent-floor hook <claude|codex|cursor>    (called by agent hooks)
 
 Environment: AGENT_FLOOR_URL, AGENT_FLOOR_PORT, AGENT_FLOOR_TEAM, AGENT_FLOOR_NAME,\n             AGENT_FLOOR_AUTOLAUNCH=0 (hooks never open the app)`);

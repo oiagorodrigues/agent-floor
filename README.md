@@ -22,7 +22,7 @@ cd agent-floor && npm ci && npm run build && npm link
 agent-floor setup claude --write
 ```
 
-That's it. The next time a Claude Code session starts, Agent Floor opens by itself in its own desktop window (no browser). Close the window and it keeps listening from the menu bar; use **Quit (pause auto-open for 6 hours)** in the menu bar icon when you want quiet. Run `agent-floor` any time to open it yourself.
+That's it. The next time a Claude Code session starts, Agent Floor opens by itself in its own desktop window (no browser). Close the window and it keeps listening from the menu bar; use **Quit (pause auto-open for 6 hours)** in the menu bar icon, or `agent-floor stop`, when you want quiet. Run `agent-floor` any time to open it yourself.
 
 Start a Claude Code session in any project. A character walks into a room named after the project folder, sits down, and starts working. When it spawns a subagent, a new teammate walks in, gets briefed with a paper plane, works at its own desk, and reports back.
 
@@ -139,7 +139,7 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 
 Group several repos into one room by giving them the same `AGENT_FLOOR_TEAM`.
 
-The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a browser tab while it is on screen. A browser tab stops rendering when you close it or switch away, and the server keeps running in the background. Stop it with `pkill -f 'agent-floor.mjs start'`.
+The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a browser tab while it is on screen. A browser tab stops rendering when you close it or switch away, and the server keeps running in the background. Stop it with `agent-floor stop`.
 
 ## Privacy and safety
 
@@ -154,6 +154,9 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 ## The desktop app
 
 `agent-floor` (or the first hook event when nothing is running) starts the floor and opens it as an Electron window. If Electron is not available, it falls back to a Chrome or Edge app window, and then to your default browser. Only one copy ever runs: parallel subagents share a launch lock. `agent-floor start` runs just the server, with no window, if you prefer a browser tab at http://localhost:4317.
+
+- `agent-floor stop` stops the running floor, whether it runs in the desktop app or in the background from `agent-floor start` or browser mode, and quits the desktop app with it. Hooks then wait 6 hours before they open the floor again, so the next agent event doesn't bring it straight back. Run `agent-floor` to open it yourself.
+- `agent-floor quiet [hours]` stops hooks from opening the floor for that many hours (6 by default). A floor that is already running stays up and keeps showing your agents.
 
 ## Performance
 
