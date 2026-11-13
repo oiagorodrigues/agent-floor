@@ -5,16 +5,20 @@
 //   GET  /state         current world as JSON
 //   POST /reset         clear the floor
 //   POST /shutdown      close the server, then call onShutdown (agent-floor stop)
+//   POST /reload        read the rooms file again (see lib/rooms.mjs)
 //   GET  /*             the built web app (dist/)
 //
 // POSTs need `Authorization: Bearer <token>` (the token lives in ~/.agent-floor/token).
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import localState from '../desktop/state.cjs';
-import { applyEvent, createState, deskOf, normalizeEvent, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
+import { loadRooms, roomsPath, seedEvents } from '../lib/rooms.mjs';
+import { applyEvent, createState, deskOf, normalizeEvent, settlePinned, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
 import { pickName } from './names.mjs';
 import { redactDeep } from './redact.mjs';
 import { createRecent } from './recent.mjs';
@@ -43,10 +47,16 @@ export function startServer({
   randomNames = process.env.AGENT_FLOOR_RANDOM_NAMES !== '0',
   onShutdown,
   recent = createRecent(),
+  // The Agent Floor home (~/.agent-floor). Without it there are no rooms and nothing is saved.
+  floorDir = undefined,
+  home = homedir(),
 } = {}) {
   const expected = Buffer.from(`Bearer ${token}`);
   const state = createState();
   const clients = new Set();
+  const roomsFile = floorDir ? roomsPath(floorDir) : null;
+  const stateFile = floorDir ? join(floorDir, `state-${port}.json`) : null;
+  let rooms = null;
 
   function broadcast(name, data) {
     const frame = `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -66,18 +76,114 @@ export function startServer({
 
   // Redacting before normalizeEvent means secrets are masked before text is clipped,
   // so a token cut at the length limit is still recognised.
-  function ingest(raw) {
+  // Only the server's own events (`trusted`) may pin a roster desk or reset one outright.
+  function ingest(raw, { trusted = false } = {}) {
     const ev = normalizeEvent(redactDeep(raw));
     if (!ev) return false;
+    if (!trusted) delete ev.pinned;
     if (randomNames && ev.type !== 'reset') nameAgent(ev);
     const { effects, actor } = applyEvent(state, ev);
     if (ev.type === 'reset') recent.reset(state);
     else recent.add(ev, actor);
     broadcast('event', { event: ev, effects });
+    if (ev.type === 'reset') applyRooms(rooms);
     return true;
   }
 
+  /** Puts the roster desks of `config` on the floor and walks out the ones it no longer lists. */
+  function applyRooms(config) {
+    rooms = config;
+    const events = seedEvents(config);
+    const desks = new Set(events.filter((e) => e.type === 'join').map((e) => e.agent));
+    for (const a of Object.values(state.agents)) {
+      if (a.pinned && !desks.has(a.id)) ingest({ type: 'leave', agent: a.id, pinned: false }, { trusted: true });
+    }
+    for (const ev of events) ingest(ev, { trusted: true });
+    save();
+    return desks.size;
+  }
+
+  /** Throws when the rooms file is invalid, and the floor keeps the rooms it has. */
+  function reloadRooms() {
+    return applyRooms(roomsFile ? loadRooms(roomsFile, home) : null);
+  }
+
+  // Only what the rooms file defines is saved, plus each room's colour and place on the
+  // floor. No activity, history or task text: prompts and commands never reach the disk.
+  function save() {
+    if (!stateFile) return;
+    const desks = Object.values(state.agents).filter((a) => a.pinned);
+    const teams = {};
+    for (const a of desks) {
+      const { id, name, hue, order, createdAt } = state.teams[a.team];
+      teams[id] = { id, name, hue, order, createdAt };
+    }
+    const saved = {
+      teams,
+      desks: desks.map(({ id, name, role, team, idleActivity, joinedAt }) => ({ id, name, role, team, idleActivity, joinedAt })),
+    };
+    const tmp = `${stateFile}.${process.pid}.tmp`;
+    try {
+      if (!desks.length) return rmSync(stateFile, { force: true });
+      mkdirSync(floorDir, { recursive: true, mode: 0o700 });
+      writeFileSync(tmp, JSON.stringify(saved), { flag: 'wx', mode: 0o600 });
+      renameSync(tmp, stateFile);
+    } catch (err) {
+      log(`Agent Floor could not save ${stateFile}: ${err.message}`);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
+  }
+
+  // Roster desks from the last run come back idle, so a rooms file that is invalid
+  // at start still shows its rooms. A valid file then replaces them.
+  function restore() {
+    let saved;
+    try {
+      saved = JSON.parse(readFileSync(stateFile, 'utf8'));
+    } catch (err) {
+      if (err.code !== 'ENOENT') log(`Agent Floor ignored ${stateFile}: ${err.message}`);
+      return;
+    }
+    const text = (v) => typeof v === 'string' && v.length > 0 && v.length <= 280;
+    const num = (v) => Number.isFinite(v);
+    const now = Date.now();
+    for (const t of Object.values(saved?.teams ?? {})) {
+      if (!text(t?.id) || !text(t.name) || !num(t.hue) || !num(t.order) || !num(t.createdAt)) continue;
+      state.teams[t.id] = { id: t.id, name: t.name, hue: t.hue, order: t.order, task: undefined, createdAt: t.createdAt };
+    }
+    for (const d of Array.isArray(saved?.desks) ? saved.desks : []) {
+      if (!text(d?.id) || !d.id.startsWith('roster:') || !text(d.role) || !state.teams[d.team] || !num(d.joinedAt)) continue;
+      const idleActivity = text(d.idleActivity) ? d.idleActivity : 'Ready';
+      state.agents[d.id] = {
+        id: d.id,
+        name: text(d.name) ? d.name : d.role,
+        role: d.role,
+        team: d.team,
+        source: 'roster',
+        status: 'idle',
+        activity: idleActivity,
+        idleActivity,
+        joinedAt: d.joinedAt,
+        lastSeen: now,
+        history: [],
+        pinned: true,
+      };
+    }
+    const used = new Set(Object.values(state.agents).map((a) => a.team));
+    for (const id of Object.keys(state.teams)) if (!used.has(id)) delete state.teams[id];
+  }
+
+  // No rooms file: nothing is read from or written to disk, as before rooms existed.
+  if (roomsFile && existsSync(roomsFile)) restore();
+  try {
+    reloadRooms();
+  } catch (err) {
+    log(`Agent Floor: ${err.message}. Fix the file and POST /reload.`);
+  }
+
   const sweeper = setInterval(() => {
+    for (const ev of settlePinned(state)) ingest(ev, { trusted: true });
     const removed = sweep(state);
     if (!removed.length) return;
     recent.removed(removed);
@@ -194,6 +300,9 @@ export function startServer({
           onShutdown?.();
         });
         return;
+      }
+      if (pathname === '/reload' && req.method === 'POST') {
+        return json(res, 200, { ok: true, desks: reloadRooms() });
       }
       if (req.method === 'GET') return serveStatic(req, res);
       return json(res, 404, { error: 'Not found' });

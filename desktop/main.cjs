@@ -8,7 +8,7 @@ const { app, BrowserWindow, Menu, Tray, nativeImage, shell, nativeTheme } = requ
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { markPng } = require('./icon.cjs');
-const { snooze } = require('./state.cjs');
+const { DIR, snooze } = require('./state.cjs');
 
 const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
 const URL = `http://127.0.0.1:${PORT}/?app=1`;
@@ -38,7 +38,7 @@ if (!app.requestSingleInstanceLock()) {
     if (await serverIsUp()) return;
     const { startServer } = await import(pathToFileURL(path.join(__dirname, '../server/index.mjs')).href);
     // `agent-floor stop` closes the in-process server; the app goes with it.
-    floor = await startServer({ port: PORT, log: () => {}, onShutdown: () => app.quit() });
+    floor = await startServer({ port: PORT, log: () => {}, floorDir: DIR, onShutdown: () => app.quit() });
   }
 
   function createWindow() {

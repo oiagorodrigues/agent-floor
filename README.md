@@ -179,9 +179,44 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 | `AGENT_FLOOR_CREW` | `0` | hooks: set to `1` to keep finished subagents at their desks until the session ends, and reuse a desk when the same kind of subagent is spawned again |
 | `AGENT_FLOOR_SHARE_PROMPTS` | `0` | set to `1` to show your prompts, replies and agent thoughts on the floor |
 | `AGENT_FLOOR_RANDOM_NAMES` | `1` | server: Claude Code, Codex and Cursor agents get a random first name, unique on the floor; `0` keeps the adapter's name |
+| `AGENT_FLOOR_ROOMS` | `~/.agent-floor/rooms.json` | server, hooks: where the rooms file is |
 | `AGENT_FLOOR_APP` | `desktop` | `browser` opens the floor in a normal browser tab instead of the Electron window. Same as `"app": "browser"` in `~/.agent-floor/config.json` |
 
 Group several repos into one room by giving them the same `AGENT_FLOOR_TEAM`.
+
+### Rooms file
+
+`~/.agent-floor/rooms.json` (or `AGENT_FLOOR_ROOMS`) gives you fixed rooms with a standing roster of desks. Without the file, nothing changes.
+
+```json
+{
+  "rooms": [
+    {
+      "slug": "game",
+      "name": "Game",
+      "leadName": "Game Lead",
+      "task": "Keep the game server healthy",
+      "paths": ["~/Workspaces/game"],
+      "roster": [
+        { "type": "live-ops", "name": "Live Ops", "job": "Health checks", "model": "haiku" },
+        { "type": "reporter", "name": "Reporter" }
+      ]
+    },
+    { "slug": "ceo", "name": "CEO Office", "roster": [{ "type": "report-intake", "name": "Intake" }] }
+  ],
+  "mail": {
+    "inbox": "~/offices/inbox", "inboxTo": "ceo:report-intake",
+    "decisions": "~/offices/decisions", "decisionsTo": "{slug}:reporter"
+  }
+}
+```
+
+- A Claude Code session whose folder is inside one of a room's `paths` lands in that room. The deepest folder wins, and `AGENT_FLOOR_TEAM` wins over the file. The lead is called `leadName` when `AGENT_FLOOR_RANDOM_NAMES=0`, like `AGENT_FLOOR_NAME`.
+- Each `roster` entry is a desk that is always there, idle with its "job · model" line. When the lead spawns a subagent of that `type`, that desk lights up instead of a new character walking in, and it goes back to idle when the subagent reports back.
+- When a Write or Edit saves a file to `<inbox>/<room slug>/...`, a paper plane flies to the `inboxTo` desk. `decisions` works the same way, and `{slug}` stands for the room the file is filed under.
+- After you edit the file, reload it with `curl -X POST localhost:4317/reload -H 'content-type: application/json' -H "authorization: Bearer $(cat ~/.agent-floor/token)"`. If the file is invalid, the answer names the bad field and the floor keeps its current rooms. Hooks treat an invalid file as no file.
+- Rooms are kept apart from `config.json`, so a mistake in one file never breaks the other. A broken `config.json` stops account labels, and a broken `rooms.json` only stops rooms.
+- The floor saves the roster desks to `~/.agent-floor/state-<port>.json` and brings them back idle on the next start, even when the rooms file is invalid at that moment.
 
 The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a browser tab while it is on screen. A browser tab stops rendering when you close it or switch away, and the server keeps running in the background. Stop it with `agent-floor stop`.
 
@@ -193,7 +228,7 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 - Prompts, replies and agent thoughts stay off the floor unless you set `AGENT_FLOOR_SHARE_PROMPTS=1`. Tool activity ("Running npm test", "Editing cart.ts") is still shown.
 - The server masks secrets in every event, whether it comes from a hook, `agent-floor emit` or your own POST, before it reaches the floor. It catches tokens with a known prefix (`ghp_`, `gho_`, `github_pat_`, `sk-`, `sk-ant-`, `xoxb-`, `xoxp-`, `AKIA`, JWTs), `Authorization` headers, `curl -u user:pass`, passwords in URLs, and values labelled `password`, `passwd`, `token`, `secret`, `api_key`, `apikey` or `access_key`. The secret becomes `[redacted]` and its label stays, so `GITHUB_TOKEN=ghp_…` shows as `GITHUB_TOKEN=[redacted]`. Masking matches patterns, so a secret in an unknown format, or an unquoted `password: word` without a digit, can still show.
 - Hooks time out after 1.2 seconds, swallow every error and always exit 0. The pi extension never makes pi wait for the floor, gives each request 0.8 seconds and swallows every error. If the floor is down, your agents never notice.
-- Nothing is stored on disk and nothing is sent anywhere else. Activity text is clipped to 280 characters.
+- Nothing is sent anywhere else, and nothing is stored on disk unless you have a rooms file. Then the floor saves only what the rooms file defines (desk names, roles and idle lines, plus each room's colour and place) to `~/.agent-floor/state-<port>.json`, owner-only. Prompts, activity, history and tasks are never saved. Activity text is clipped to 280 characters.
 - For replay and the office log, the server keeps the last 30 minutes of events (at most 2,000) and the floor as it was at the start of that window, in memory only, and sends them only with the `/stream` snapshot. They come from the same events the stream already carries, so prompts are in them only when you set `AGENT_FLOOR_SHARE_PROMPTS=1`.
 
 ## The desktop app
