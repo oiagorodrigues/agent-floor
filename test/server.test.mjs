@@ -74,6 +74,19 @@ test('hook agents get distinct first names that stick for their lifetime', () =>
     assert.equal((await names(base))['claude-code:s0'], before['claude-code:s0']);
   }));
 
+test('hermes, opencode and pi agents get random first names too', () =>
+  withFloor(async (base) => {
+    const leads = [
+      { agent: 'hermes:s1', source: 'hermes', name: 'Hermes' },
+      { agent: 'opencode:s1', source: 'opencode', name: 'OpenCode' },
+      { agent: 'pi:s1', source: 'pi', name: 'Pi' },
+    ];
+    await post(base, leads.map((a) => ({ type: 'join', ...a })));
+    const given = await names(base);
+    for (const a of leads) assert.ok(NAMES.includes(given[a.agent]), `${a.source} gets a first name`);
+    assert.equal(new Set(leads.map((a) => given[a.agent])).size, leads.length);
+  }));
+
 test('random names can be turned off', async () => {
   const floor = await startServer({ port: 0, log: () => {}, token: TOKEN, randomNames: false });
   const base = `http://127.0.0.1:${floor.server.address().port}`;

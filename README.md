@@ -178,7 +178,7 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 | `AGENT_FLOOR_AUTOLAUNCH` | `1` | set to `0` so hooks never open the app |
 | `AGENT_FLOOR_CREW` | `0` | hooks: set to `1` to keep finished subagents at their desks until the session ends, and reuse a desk when the same kind of subagent is spawned again |
 | `AGENT_FLOOR_SHARE_PROMPTS` | `0` | set to `1` to show your prompts, replies and agent thoughts on the floor |
-| `AGENT_FLOOR_RANDOM_NAMES` | `1` | server: Claude Code, Codex and Cursor agents get a random first name, unique on the floor; `0` keeps the adapter's name |
+| `AGENT_FLOOR_RANDOM_NAMES` | `1` | server: Claude Code, Codex, Cursor, Hermes, opencode and pi agents get a random first name, unique on the floor; `0` keeps the adapter's name |
 | `AGENT_FLOOR_ROOMS` | `~/.agent-floor/rooms.json` | server, hooks: where the rooms file is |
 | `AGENT_FLOOR_APP` | `desktop` | `browser` opens the floor in a normal browser tab instead of the Electron window. Same as `"app": "browser"` in `~/.agent-floor/config.json` |
 
