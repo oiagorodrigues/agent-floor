@@ -139,6 +139,19 @@ test('a roster subagent lights up its own desk and goes back to idle', () => {
   assert.doesNotMatch(offRoster[1].agent, /^roster:/, 'types off the roster still get a temporary desk');
 });
 
+test('a roster desk drops the stage of a finished spawn', () => {
+  const s = seeded();
+  const base = { session_id: 'sess5678', cwd: '/srv/game' };
+  claude(s, { ...base, hook_event_name: 'SessionStart' });
+  const spawn = { ...base, hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_use_id: 'tu_1', tool_input: { subagent_type: 'live-ops', description: 'Stage 2: check containers' } };
+  const desk = s.agents['roster:game:live-ops'];
+  claude(s, spawn);
+  assert.equal(desk.stage, 'Stage 2');
+  claude(s, { ...spawn, hook_event_name: 'PostToolUse' });
+  assert.equal(desk.status, 'idle');
+  assert.equal(desk.stage, undefined);
+});
+
 test('a desk left busy by an interrupted subagent settles back to idle', () => {
   const s = seeded(1000);
   run(s, { type: 'join', agent: 'roster:ceo:judge', parent: 'lead', status: 'thinking', ts: 1000 });

@@ -170,6 +170,7 @@ function standDown(agent) {
   agent.tool = undefined;
   agent.parent = undefined;
   agent.boundKey = undefined;
+  agent.stage = undefined;
   delete agent.spawns;
 }
 
