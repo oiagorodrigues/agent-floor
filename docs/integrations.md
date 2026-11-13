@@ -125,6 +125,30 @@ One default export serves both plugin APIs, as [opencode's migration guide](http
 
 Each session is one agent, `opencode:<last 8 characters of the session id>`, in a room named after the project folder. Subagents started with the `task` tool run in their own sessions, so they get their own desks. The plugin only reads hook payloads and never changes tool input.
 
+## pi
+
+pi runs extensions inside its own process ([pi extension docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)), so pi needs no hook command: the extension in `extensions/agent-floor-pi.js` maps pi's events with `adapters/pi.mjs` and posts them itself, with the token from `~/.agent-floor/token` (or `$AGENT_FLOOR_HOME/token`).
+
+`agent-floor setup pi --write` adds the extension's absolute path to the `extensions` list in `~/.pi/agent/settings.json` (`$PI_CODING_AGENT_DIR/settings.json` when that is set). Like the other setups, it keeps a timestamped `.bak` copy, leaves every other setting and extension alone, replaces an Agent Floor entry from an older install path, and changes nothing when run again. `--project` writes `.pi/settings.json` in the current repository instead, which pi loads only after you trust the project. Without `--write` it prints the entry:
+
+```json
+{
+  "extensions": ["/absolute/path/to/agent-floor/extensions/agent-floor-pi.js"]
+}
+```
+
+| pi event | On the floor |
+| --- | --- |
+| `session_start` | The lead walks in. Each pi session gets its own desk. |
+| `before_agent_start` | Thinking. Your prompt is shown only with `AGENT_FLOOR_SHARE_PROMPTS=1`. |
+| `tool_execution_start` | Working. The monitor shows the tool and a readable summary ("Running npm test", "Editing cart.ts"). |
+| `tool_execution_end` | Thinking, with "Done: bash" or "Failed: bash". Tool output never reaches the floor. |
+| `ui_prompt_start` / `ui_prompt_end` | Waiting while a dialog asks you something, then back to work or idle. |
+| `agent_settled` | Idle, once pi has stopped retrying and continuing. |
+| `session_shutdown` | The lead walks out. A `/reload` keeps the desk. |
+
+Handlers never wait for the floor. Events go out one request at a time, in order, with a 0.8 second timeout, and every failure is swallowed. The one exception is `session_shutdown`, which waits up to 0.8 seconds so the walk-out reaches the floor before pi exits. The extension never opens the desktop app; start the floor with `agent-floor` or let a Claude Code hook open it.
+
 ## Your own agents
 
 ### Python
