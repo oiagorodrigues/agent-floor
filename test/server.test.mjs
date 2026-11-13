@@ -2,6 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../server/index.mjs';
 import { NAMES } from '../server/names.mjs';
+import { createRecent, RECENT_MAX } from '../server/recent.mjs';
+import { fromClaude } from '../adapters/claude.mjs';
+import { fromCodex } from '../adapters/codex.mjs';
+import { fromCursor } from '../adapters/cursor.mjs';
+import { createState } from '../shared/protocol.js';
+import { Recording } from '../shared/replay.js';
+import { buildLines, linesToText } from '../shared/office-log.js';
 
 const TOKEN = 'test-token';
 const auth = { Authorization: `Bearer ${TOKEN}` };
@@ -144,3 +151,88 @@ test('a reused crew desk keeps its random name', () =>
     assert.equal(Object.keys(after).length, 2, 'no second desk');
     assert.equal(after['claude-code:s1:tu1'], first);
   }));
+
+/** The first SSE frame of /stream: `{ version, state, recent }`. */
+async function snapshot(base) {
+  const ctrl = new AbortController();
+  const res = await fetch(`${base}/stream`, { signal: ctrl.signal });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  while (!text.includes('\n\n', text.indexOf('data: '))) text += decoder.decode((await reader.read()).value, { stream: true });
+  ctrl.abort();
+  return JSON.parse(text.split('\n').find((l) => l.startsWith('data: ')).slice(6));
+}
+
+test('the stream snapshot carries recent events, with the names and accounts the floor gave them', () =>
+  withFloor(async (base) => {
+    await post(base, [
+      { type: 'join', agent: 'claude-code:s1', source: 'claude-code', name: 'Claude', account: 'work', team: 'T' },
+      { type: 'tool', agent: 'claude-code:s1', source: 'claude-code', name: 'Claude', tool: 'Bash', activity: 'Running tests' },
+    ]);
+    const { state, recent } = await snapshot(base);
+    const given = state.agents['claude-code:s1'].name;
+    assert.ok(NAMES.includes(given));
+    assert.deepEqual(recent.map((e) => e.event.type), ['join', 'tool']);
+    assert.ok(recent.every((e) => e.event.name === given), 'buffered events carry the random name, not "Claude"');
+    assert.equal(recent[0].event.account, 'work');
+
+    const replay = new Recording(createState(), 0);
+    for (const e of recent) replay.record(e);
+    replay.seek(Infinity);
+    assert.equal(replay.view.agents['claude-code:s1'].name, given);
+    assert.equal(replay.view.agents['claude-code:s1'].account, 'work');
+
+    await fetch(`${base}/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth }, body: '{}' });
+    assert.deepEqual((await snapshot(base)).recent, [], 'reset clears the buffer');
+  }));
+
+test('the recent buffer stays bounded by count', () =>
+  withFloor(async (base) => {
+    const total = RECENT_MAX + 150;
+    for (let i = 0; i < total; i += 200) {
+      await post(base, Array.from({ length: Math.min(200, total - i) }, (_, j) => ({ type: 'status', agent: 'bot', status: 'working', activity: `step ${i + j}` })));
+    }
+    const { recent } = await snapshot(base);
+    assert.equal(recent.length, RECENT_MAX);
+    assert.equal(recent.at(-1).event.activity, `step ${total - 1}`, 'the newest events are the ones kept');
+  }));
+
+test('the recent buffer forgets events older than its window', () => {
+  let clock = 0;
+  const recent = createRecent({ keepMs: 1000, max: 10, now: () => clock });
+  recent.add({ type: 'join', agent: 'a' });
+  clock = 500;
+  recent.add({ type: 'join', agent: 'b' });
+  clock = 1200;
+  assert.deepEqual(recent.entries().map((e) => e.event.agent), ['b'], 'trimmed on read, even with no new events');
+  clock = 5000;
+  assert.deepEqual(recent.entries(), []);
+});
+
+const SECRET = 'my secret prompt 7f3a';
+
+/** One turn from each adapter in which the user's prompt, the reply or a thought appears. */
+function conversationEvents(sharePrompts) {
+  const claude = { session_id: 'sess1', cwd: '/x/app' };
+  return [
+    ...fromClaude({ ...claude, hook_event_name: 'UserPromptSubmit', prompt: SECRET }, { sharePrompts }),
+    ...fromClaude({ ...claude, hook_event_name: 'PreToolUse', tool_name: 'Task', tool_use_id: 'tu1', tool_input: { subagent_type: 'Explore', prompt: SECRET } }, { sharePrompts }),
+    ...fromCodex({ type: 'agent-turn-complete', 'thread-id': 't1', 'input-messages': [SECRET], 'last-assistant-message': SECRET }, { sharePrompts }),
+    ...fromCursor({ hook_event_name: 'beforeSubmitPrompt', conversation_id: 'c1', prompt: SECRET }, { sharePrompts }),
+    ...fromCursor({ hook_event_name: 'afterAgentThought', conversation_id: 'c1', text: SECRET }, { sharePrompts }),
+    ...fromCursor({ hook_event_name: 'afterAgentResponse', conversation_id: 'c1', text: SECRET }, { sharePrompts }),
+  ];
+}
+
+for (const sharePrompts of [false, true]) {
+  test(`the recent buffer and office log ${sharePrompts ? 'carry' : 'never hold'} prompt text when sharing is ${sharePrompts ? 'on' : 'off'}`, () =>
+    withFloor(async (base) => {
+      await post(base, conversationEvents(sharePrompts));
+      const { state, recent } = await snapshot(base);
+      assert.ok(recent.length >= 6);
+      const log = linesToText(buildLines(recent, [], state, Infinity));
+      assert.equal(JSON.stringify(recent).includes(SECRET), sharePrompts);
+      assert.equal(log.includes(SECRET), sharePrompts);
+    }));
+}

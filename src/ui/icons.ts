@@ -10,8 +10,12 @@ import play from '@phosphor-icons/core/assets/regular/play.svg?raw';
 import github from '@phosphor-icons/core/assets/regular/github-logo.svg?raw';
 import crosshair from '@phosphor-icons/core/assets/regular/crosshair.svg?raw';
 import users from '@phosphor-icons/core/assets/regular/users.svg?raw';
+import replay from '@phosphor-icons/core/assets/regular/clock-counter-clockwise.svg?raw';
+import pause from '@phosphor-icons/core/assets/regular/pause.svg?raw';
+import broadcast from '@phosphor-icons/core/assets/regular/broadcast.svg?raw';
+import log from '@phosphor-icons/core/assets/regular/list-bullets.svg?raw';
 
-export const icons = { x, sun, moon, plug, cornersOut, copy, check, play, github, crosshair, users };
+export const icons = { x, sun, moon, plug, cornersOut, copy, check, play, github, crosshair, users, replay, pause, broadcast, log };
 export type IconName = keyof typeof icons;
 
 export function icon(name: IconName) {

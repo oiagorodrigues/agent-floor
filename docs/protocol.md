@@ -60,7 +60,7 @@ A helper that joined with `stay: true` is not removed when it finishes. When its
 
 ## Reading state
 
-- `GET /stream`: Server-Sent Events. First a `snapshot` with the full state, then `event` frames (`{ event, effects }`) and `removed` frames (`{ agents: [...] }`).
+- `GET /stream`: Server-Sent Events. First a `snapshot` with the full state and `recent` (the last 30 minutes of events, at most 2,000, as `{ at, event, actor? }`), then `event` frames (`{ event, effects }`) and `removed` frames (`{ agents: [...] }`). `actor` is the desk an event landed on when a subagent hint moved it off `event.agent`.
 - `GET /state`: the current world as JSON.
 - `GET /health`: `{ ok, version, agents }`.
 - `POST /reset`: clear the floor. Needs the token like `/events`.

@@ -1,5 +1,6 @@
 import { createScript } from '../../shared/demo-script.js';
 import type { Effect, FloorEvent, WorldState } from '../../shared/protocol';
+import type { LogEntry } from '../../shared/replay';
 import { store } from './store';
 import { DEMO_ONLY } from '../config';
 
@@ -61,8 +62,8 @@ export function connect() {
       opened = true;
       window.clearTimeout(fallback);
       stopDemo();
-      const { state } = JSON.parse((msg as MessageEvent).data) as { state: WorldState };
-      store.replace(state);
+      const { state, recent } = JSON.parse((msg as MessageEvent).data) as { state: WorldState; recent?: LogEntry[] };
+      store.replace(state, Array.isArray(recent) ? recent : []);
       store.setMode('live');
     });
     es.addEventListener('event', (msg) => {

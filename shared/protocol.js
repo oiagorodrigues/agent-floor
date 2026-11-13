@@ -303,7 +303,8 @@ export function applyEvent(state, rawEv) {
       break;
     }
   }
-  return { state, effects };
+  // `actor` is the desk the event landed on, which differs from `ev.agent` for subagent hints.
+  return { state, effects, actor: agent.id };
 }
 
 /**
