@@ -69,7 +69,7 @@ function subagentVisit(input, base, sharePrompts) {
   const ending = SUBAGENT_ENDINGS[input.status] ?? SUBAGENT_ENDINGS.completed;
   // subagentStop carries no subagent id; the transcript path is the one per-subagent value.
   const key = input.agent_transcript_path ? createHash('sha256').update(String(input.agent_transcript_path)).digest('hex') : slugKey(type);
-  const helper = { agent: `${base.agent}:${shortId(key, 12)}`, parent: base.agent, team: base.team, source: base.source };
+  const helper = { agent: `${base.agent}:${shortId(key, 12)}`, parent: base.agent, team: base.team, source: base.source, machine: base.machine };
   return [
     {
       type: 'join',
