@@ -131,7 +131,11 @@ class Store {
   }
 
   private record(entry: LogEntry) {
+    const start = this.recording.start;
     this.recording.record(entry);
+    // The backlog ends at a reset, and once the recording starts dropping its own
+    // oldest entries, the backlog is older still.
+    if (entry.event?.type === 'reset' || this.recording.start !== start) this.before = [];
     if (this.replay && this.replay.t < this.recording.start) this.replay.t = this.recording.start;
   }
 

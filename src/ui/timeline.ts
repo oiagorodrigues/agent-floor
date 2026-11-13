@@ -1,3 +1,4 @@
+import { clock } from '../../shared/office-log.js';
 import type { LogEntry } from '../../shared/replay';
 import { store } from '../core/store';
 import { icon } from './icons';
@@ -9,10 +10,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
   if (cls) e.className = cls;
   if (html !== undefined) e.innerHTML = html;
   return e;
-}
-
-function clock(ts: number) {
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function behind(ms: number) {
@@ -86,6 +83,7 @@ export class Timeline {
   }
 
   toggle() {
+    this.pendingSeek = null;
     if (store.replay) store.stopReplay();
     else store.startReplay();
   }
@@ -125,7 +123,8 @@ export class Timeline {
       this.pendingSeek = this.timeAt(e.clientX);
     });
     this.track.addEventListener('pointermove', (e) => {
-      if (this.dragging) this.pendingSeek = this.timeAt(e.clientX);
+      // A drag past the live edge ends replay while the pointer is still down.
+      if (this.dragging && store.replay) this.pendingSeek = this.timeAt(e.clientX);
     });
     const end = () => {
       if (!this.dragging) return;

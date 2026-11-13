@@ -61,7 +61,14 @@ export function buildLines(backlog, entries, state, until) {
   for (const e of [...backlog, ...entries]) {
     if (e.at > until) break;
     const ev = e.event;
-    if (!ev || ev.type === 'reset') continue;
+    if (!ev) continue;
+    if (ev.type === 'reset') {
+      // The floor was cleared: start the log over too.
+      out.length = 0;
+      names.clear();
+      teams.clear();
+      continue;
+    }
     const id = e.actor || ev.agent;
     // Learn names and rooms as they appear, so lines about agents that have since left still read well.
     if (ev.name && (ev.type === 'join' || !names.has(id))) names.set(id, ev.name);

@@ -45,3 +45,18 @@ test('replay shows the server backlog and what happened up to the playhead', () 
     ['Bea: Arrived', 'Ada: Arrived'],
   );
 });
+
+test('a reset starts the log over, so nothing from before it stays on screen', () => {
+  const { state, entries } = floor([
+    { type: 'join', agent: 'lead', team: 'Core', name: 'Ada' },
+    { type: 'status', agent: 'lead', status: 'thinking', activity: 'Asked: shared prompt' },
+    { type: 'reset' },
+    { type: 'join', agent: 'next', team: 'Core', name: 'Bea' },
+  ]);
+  const backlog = [{ at: 1, event: normalizeEvent({ type: 'join', agent: 'early', name: 'Cleo', ts: 1 }) }];
+  assert.deepEqual(
+    buildLines(backlog, entries, state, Infinity).map((l) => `${l.who}: ${l.text}`),
+    ['Bea: Arrived'],
+  );
+  assert.equal(buildLines(backlog, entries, state, 2500).length, 3, 'replay before the reset still shows what happened then');
+});
