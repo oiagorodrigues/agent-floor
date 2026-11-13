@@ -8,11 +8,10 @@
     "agent-floor": "bin/agent-floor.mjs"
   },
   "files": [
-    "adapters",
     "bin",
     "desktop",
     "dist",
-    "extensions",
+    "integrations",
     "lib",
     "server",
     "shared"

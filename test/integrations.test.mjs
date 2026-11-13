@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AGENTS, HOOK_AGENTS, INTEGRATIONS, setupForms } from '../integrations/index.mjs';
 import { startServer } from '../server/index.mjs';
 
 const CLI = resolve(fileURLToPath(import.meta.url), '../../bin/agent-floor.mjs');
@@ -36,6 +37,33 @@ async function tempHome() {
 const writeConfig = (floorHome, config) => writeFile(join(floorHome, 'config.json'), JSON.stringify(config));
 const claudeCommand = (configDir) => `node '${CLI}' hook claude` + (configDir ? ` --config-dir '${configDir}'` : '');
 const CLAUDE_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SubagentStop', 'PreCompact', 'SessionEnd'];
+
+test('the registry lists every integration folder, each with a setup', async () => {
+  const root = resolve(fileURLToPath(import.meta.url), '../../integrations');
+  const folders = (await readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+  assert.deepEqual(AGENTS, folders.sort());
+  for (const name of AGENTS) assert.equal(typeof INTEGRATIONS[name].setup, 'function', name);
+  assert.deepEqual(HOOK_AGENTS, ['claude', 'codex', 'cursor', 'hermes']);
+});
+
+test('the setup usage and the help are built from the registry', async () => {
+  const { env } = await tempHome();
+  const forms = setupForms();
+  assert.deepEqual(forms[0], { args: `<${AGENTS.join('|')}> [--write] [--project]`, note: '' });
+  assert.equal(SETUP_USAGE, `Usage: ${forms.map((f) => `agent-floor setup ${f.args}`).join('\n       ')}\n`);
+  const help = (await cli(['--help'], { env })).stdout;
+  for (const { args } of forms) assert.ok(help.includes(`agent-floor setup ${args}`), args);
+  assert.ok(help.includes(`agent-floor hook <${HOOK_AGENTS.join('|')}>`));
+});
+
+test('setup runs for every registered agent instead of printing the usage', async () => {
+  const { env } = await tempHome();
+  for (const name of AGENTS) {
+    const res = await cli(['setup', name], { env });
+    assert.equal(res.code, 0, `${name}: ${res.stderr}`);
+    assert.ok(!res.stdout.includes('Usage:'), name);
+  }
+});
 
 test('setup without an agent, or with an unknown one, prints the usage and exits 1', async () => {
   const { env } = await tempHome();

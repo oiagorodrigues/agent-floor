@@ -1,25 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accountLabel, claudeConfigDirFor, claudeConfigDirs, claudeSetupTargets } from '../lib/accounts.mjs';
+import { accountLabel, claudeConfigDirFor, claudeConfigDirs, claudeSetupTargets } from '../integrations/claude/accounts.mjs';
 
 const home = '/Users/me';
-const config = {
-  claude: {
-    byPath: [
-      { path: '~/Workspaces/work', configDir: '~/.claude-work' },
-      { path: '~/Workspaces/work/oss', configDir: '~/.claude' },
-    ],
-  },
+const settings = {
+  byPath: [
+    { path: '~/Workspaces/work', configDir: '~/.claude-work' },
+    { path: '~/Workspaces/work/oss', configDir: '~/.claude' },
+  ],
 };
-const dirFor = (args) => claudeConfigDirFor({ config, home, ...args });
+const dirFor = (args) => claudeConfigDirFor({ settings, home, ...args });
 
 test('setup targets the default dir plus every mapped dir, once each', () => {
-  assert.deepEqual(claudeConfigDirs(config, home), ['/Users/me/.claude', '/Users/me/.claude-work']);
+  assert.deepEqual(claudeConfigDirs(settings, home), ['/Users/me/.claude', '/Users/me/.claude-work']);
   assert.deepEqual(claudeConfigDirs({}, home), ['/Users/me/.claude']);
 });
 
 test('setup writes to a --settings file only, with the config dir when one is given', () => {
-  const targets = (args) => claudeSetupTargets({ cwd: '/repo', config, home, ...args });
+  const targets = (args) => claudeSetupTargets({ cwd: '/repo', settings, home, ...args });
   assert.deepEqual(targets({ settingsFile: 'factory/settings.json' }), [{ path: '/repo/factory/settings.json', configDir: undefined }]);
   assert.deepEqual(targets({ settingsFile: '/etc/run.json', configDir: '~/.claude-work' }), [
     { path: '/etc/run.json', configDir: '/Users/me/.claude-work' },
@@ -47,11 +45,11 @@ test('the installed dir beats CLAUDE_CONFIG_DIR, which beats folder rules', () =
 });
 
 test('labels name the non-default accounts only', () => {
-  assert.equal(accountLabel('/Users/me/.claude', config, home), null);
-  assert.equal(accountLabel('~/.claude-work', config, home), 'work');
-  assert.equal(accountLabel('/opt/agents/acme', config, home), 'acme');
+  assert.equal(accountLabel('/Users/me/.claude', settings, home), null);
+  assert.equal(accountLabel('~/.claude-work', settings, home), 'work');
+  assert.equal(accountLabel('/opt/agents/acme', settings, home), 'acme');
 });
 
 test('a malformed config is reported, not ignored', () => {
-  assert.throws(() => claudeConfigDirs({ claude: { byPath: { path: 'x' } } }, home), /claude\.byPath must be a list/);
+  assert.throws(() => claudeConfigDirs({ byPath: { path: 'x' } }, home), /claude\.byPath must be a list/);
 });

@@ -4,8 +4,8 @@
 // JSON argument when a turn completes. Newer Codex builds can also run hooks that
 // pass a Claude-style payload ({ hook_event_name, ... }) on stdin; those are routed
 // through the Claude mapper with source "codex".
-import { fromClaude } from './claude.mjs';
-import { machineName, sharesConversation, shortId, teamFromCwd } from './common.mjs';
+import { fromClaude } from '../claude/adapter.mjs';
+import { machineName, sharesConversation, shortId, teamFromCwd } from '../common.mjs';
 
 export function fromCodex(input, { sharePrompts = sharesConversation(), machine = machineName() } = {}) {
   if (!input || typeof input !== 'object') return [];

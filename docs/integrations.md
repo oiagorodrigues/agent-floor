@@ -1,6 +1,6 @@
 # Integrations
 
-Every integration does the same thing: turn "something happened in my agent" into a small JSON event and post it to `http://localhost:4317/events` with `Authorization: Bearer <token>`, where the token is the content of `~/.agent-floor/token`. The built-in adapters live in `adapters/` and are covered by tests in `test/`.
+Every integration does the same thing: turn "something happened in my agent" into a small JSON event and post it to `http://localhost:4317/events` with `Authorization: Bearer <token>`, where the token is the content of `~/.agent-floor/token`. The built-in integrations live in `integrations/`, one folder per tool, and are covered by tests in `test/`.
 
 ## Claude Code
 
@@ -104,7 +104,7 @@ The hook prints nothing and always exits 0, so it never blocks a tool call, rewr
 `agent-floor setup opencode --write` writes this file to `~/.config/opencode/plugins/agent-floor.js` (or `$XDG_CONFIG_HOME/opencode/plugins/`), and `--project` writes it to `.opencode/plugins/` in the current repository. opencode loads every `.js` file in those folders. Without `--write`, setup only prints the file and the path. An existing file is backed up next to it with a timestamp, and a new one is owner-only.
 
 ```js
-import { createPlugin } from "file:///absolute/path/agent-floor/adapters/opencode-plugin.mjs";
+import { createPlugin } from "file:///absolute/path/agent-floor/integrations/opencode/plugin.mjs";
 
 export default createPlugin();
 ```
@@ -127,13 +127,13 @@ Each session is one agent, `opencode:<last 8 characters of the session id>`, in 
 
 ## pi
 
-pi runs extensions inside its own process ([pi extension docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)), so pi needs no hook command: the extension in `extensions/agent-floor-pi.js` maps pi's events with `adapters/pi.mjs` and posts them itself, with the token from `~/.agent-floor/token` (or `$AGENT_FLOOR_HOME/token`).
+pi runs extensions inside its own process ([pi extension docs](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)), so pi needs no hook command: the extension in `integrations/pi/agent-floor-pi.js` maps pi's events with `integrations/pi/adapter.mjs` and posts them itself, with the token from `~/.agent-floor/token` (or `$AGENT_FLOOR_HOME/token`).
 
 `agent-floor setup pi --write` adds the extension's absolute path to the `extensions` list in `~/.pi/agent/settings.json` (`$PI_CODING_AGENT_DIR/settings.json` when that is set). Like the other setups, it keeps a timestamped `.bak` copy, leaves every other setting and extension alone, replaces an Agent Floor entry from an older install path, and changes nothing when run again. `--project` writes `.pi/settings.json` in the current repository instead, which pi loads only after you trust the project. Without `--write` it prints the entry:
 
 ```json
 {
-  "extensions": ["/absolute/path/to/agent-floor/extensions/agent-floor-pi.js"]
+  "extensions": ["/absolute/path/to/agent-floor/integrations/pi/agent-floor-pi.js"]
 }
 ```
 
@@ -204,7 +204,8 @@ agent-floor emit --agent deploy-bot --type leave
 
 ## Writing a new adapter
 
-1. Add `adapters/<tool>.mjs` exporting a pure function from the tool's payload to an array of events.
-2. Wire it into the `hook` command in `bin/agent-floor.mjs`, and to `setup` if the tool has a config file.
-3. Add cases to `test/protocol.test.mjs`.
-4. A hook must never block, prompt, or fail the host tool. Keep the 1.2 second timeout and always exit 0.
+1. Add `integrations/<tool>/adapter.mjs` exporting a pure function from the tool's payload to an array of events.
+2. Add `integrations/<tool>/index.mjs` with a default export holding `setup` (prints or writes the tool's config) and, if the tool runs a command per event, `hook`. The `Integration` type in `integrations/index.mjs` lists what each one receives.
+3. Add one line for it to `INTEGRATIONS` in `integrations/index.mjs`. `setup <tool>`, `hook <tool>`, the usage text and the help pick it up from there.
+4. Add cases to `test/protocol.test.mjs`.
+5. A hook must never block, prompt, or fail the host tool. Keep the 1.2 second timeout and always exit 0.

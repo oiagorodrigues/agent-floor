@@ -1,8 +1,8 @@
 // Claude Code hooks -> Agent Floor events.
 // Receives the JSON object Claude Code writes to a hook's stdin.
 // https://docs.claude.com/en/docs/claude-code/hooks
-import { mailTarget, roomForPath, rosterEntry, rosterId } from '../lib/rooms.mjs';
-import { crewMode, describeTool, machineName, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
+import { mailTarget, roomForPath, rosterEntry, rosterId } from '../../lib/rooms.mjs';
+import { crewMode, describeTool, machineName, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from '../common.mjs';
 
 const SPAWN_TOOLS = new Set(['Task', 'Agent']);
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
@@ -22,7 +22,7 @@ export function stageOf(...texts) {
  *   account: label of the Claude config dir the session runs under, shown on the agent card
  *   crew: keep finished helpers at their desks (defaults to AGENT_FLOOR_CREW)
  *   rooms: the checked rooms file (lib/rooms.mjs), or null for none
- * @returns {import('../shared/protocol.js').InboundEvent[]}
+ * @returns {import('../../shared/protocol.js').InboundEvent[]}
  */
 export function fromClaude(input, opts = {}) {
   if (!input || typeof input !== 'object') return [];
