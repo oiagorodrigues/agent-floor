@@ -160,3 +160,33 @@ test('the pi extension posts mapped events in order with the bearer token', asyn
   assert.deepEqual(events.map((e) => e.type), ['join', 'status', 'tool', 'status', 'leave']);
   assert.doesNotMatch(JSON.stringify(events), /secret/);
 });
+
+test('a floor that never answers cannot keep pi from exiting', async (t) => {
+  const floorHome = await tempDir('agent-floor-pi-hang-');
+  await writeFile(join(floorHome, 'token'), 'test-token\n', { mode: 0o600 });
+  let requests = 0;
+  let open = 0;
+  const server = createServer((_req, res) => {
+    requests++;
+    open++;
+    res.on('close', () => open--);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  process.env.AGENT_FLOOR_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.AGENT_FLOOR_HOME = floorHome;
+  // A query string loads a second copy of the module, so it reads this test's URL.
+  const { default: agentFloor } = await import('../extensions/agent-floor-pi.js?hang');
+  const handlers = new Map();
+  agentFloor({ on: (name, handler) => handlers.set(name, handler) });
+  const ctx = { cwd: '/w/shop', sessionManager: { getSessionId: () => SESSION_ID }, isIdle: () => false };
+
+  handlers.get('session_start')(samples.start, ctx);
+  handlers.get('tool_execution_start')(samples.bash, ctx);
+  const started = Date.now();
+  await handlers.get('session_shutdown')(samples.quit, ctx);
+  assert.ok(Date.now() - started < 1500, `shutdown took ${Date.now() - started} ms`);
+  for (let i = 0; i < 50 && open > 0; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(open, 0, 'no request is left open after shutdown');
+  assert.equal(requests, 1, 'events queued behind the hung request are dropped');
+});

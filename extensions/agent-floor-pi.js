@@ -15,6 +15,7 @@ const MAX_BATCH = 200; // the most events the server takes in one POST
 
 let queued = [];
 let sending = null;
+let cancel = new AbortController();
 
 async function post(events) {
   try {
@@ -22,7 +23,7 @@ async function post(events) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localState.readToken()}` },
       body: JSON.stringify(events),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), cancel.signal]),
     });
   } catch {
     // Floor not running, slow, or the token is unreadable. Stay silent.
@@ -43,14 +44,24 @@ function send(events) {
   return sending ?? Promise.resolve();
 }
 
+// pi may exit right after session_shutdown, so the queue gets one timeout to
+// drain. Whatever is still queued or in flight after that is dropped, so an open
+// request never keeps pi from exiting.
+async function sendLast(events) {
+  await Promise.race([send(events), new Promise((r) => setTimeout(r, TIMEOUT_MS).unref())]);
+  queued.length = 0;
+  cancel.abort();
+  cancel = new AbortController();
+}
+
 /** @param {{ on(event: string, handler: (event: any, ctx: any) => unknown): void }} pi */
 export default function agentFloor(pi) {
   for (const name of PI_EVENTS) {
     pi.on(name, (event, ctx) => {
       try {
-        const sent = send(fromPi(event, { cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), idle: ctx.isIdle() }));
-        // pi may exit right after session_shutdown, so give the leave event one timeout to go out.
-        if (name === 'session_shutdown') return Promise.race([sent, new Promise((r) => setTimeout(r, TIMEOUT_MS).unref())]);
+        const events = fromPi(event, { cwd: ctx.cwd, sessionId: ctx.sessionManager.getSessionId(), idle: ctx.isIdle() });
+        if (name === 'session_shutdown') return sendLast(events);
+        send(events);
       } catch {
         // A pi build with a different ctx shape. Stay silent.
       }
