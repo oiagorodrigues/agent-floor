@@ -13,7 +13,10 @@ export interface InboundEvent {
   /** Which computer the agent runs on (AGENT_FLOOR_MACHINE). */
   machine?: string;
   team?: string | { id?: string; name: string };
-  parent?: string;
+  /** On a roster desk, `null` ends one spawn; the desk goes back to idle after the last one. */
+  parent?: string | null;
+  /** Server only (roster desks from the rooms file). Dropped from events posted to /events. */
+  pinned?: boolean;
   status?: Status;
   activity?: string;
   tool?: string;
@@ -37,7 +40,8 @@ export interface FloorEvent {
   source?: string;
   account?: string;
   machine?: string;
-  parent?: string;
+  parent?: string | null;
+  pinned?: boolean;
   team?: string;
   teamName?: string;
   status?: Status;
@@ -77,6 +81,12 @@ export interface Agent {
   boundKey?: string;
   stage?: string;
   stay?: boolean;
+  /** A standing roster desk from the rooms file: never swept, so its room stays too. */
+  pinned?: boolean;
+  /** What a roster desk shows when no spawn is running. */
+  idleActivity?: string;
+  /** Spawns of this roster desk still running. */
+  spawns?: number;
 }
 
 export interface Team {
@@ -112,4 +122,5 @@ export function normalizeEvent(raw: unknown, now?: number): FloorEvent | null;
 export function deskOf(state: WorldState, id: string): string;
 export function applyEvent(state: WorldState, ev: FloorEvent | null): { state: WorldState; effects: Effect[]; actor?: string };
 export function removeAgents(state: WorldState, ids: string[]): string[];
+export function settlePinned(state: WorldState, now?: number, opts?: { doneMs?: number; stuckMs?: number }): InboundEvent[];
 export function sweep(state: WorldState, now?: number, opts?: { offlineMs?: number; doneHelperMs?: number; staleMs?: number }): string[];

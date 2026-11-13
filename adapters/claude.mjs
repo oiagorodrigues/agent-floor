@@ -1,9 +1,11 @@
 // Claude Code hooks -> Agent Floor events.
 // Receives the JSON object Claude Code writes to a hook's stdin.
 // https://docs.claude.com/en/docs/claude-code/hooks
+import { mailTarget, roomForPath, rosterEntry, rosterId } from '../lib/rooms.mjs';
 import { crewMode, describeTool, machineName, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
 
 const SPAWN_TOOLS = new Set(['Task', 'Agent']);
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
 
 /** "Stage 2" when one of the texts names a pipeline stage near its start. */
 export function stageOf(...texts) {
@@ -16,9 +18,10 @@ export function stageOf(...texts) {
 
 /**
  * @param {Record<string, any>} input hook payload
- * @param {{ source?: string, name?: string, account?: string | null, machine?: string, sharePrompts?: boolean, crew?: boolean }} [opts]
+ * @param {{ source?: string, name?: string, account?: string | null, machine?: string, sharePrompts?: boolean, crew?: boolean, rooms?: object | null }} [opts]
  *   account: label of the Claude config dir the session runs under, shown on the agent card
  *   crew: keep finished helpers at their desks (defaults to AGENT_FLOOR_CREW)
+ *   rooms: the checked rooms file (lib/rooms.mjs), or null for none
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
 export function fromClaude(input, opts = {}) {
@@ -29,14 +32,16 @@ export function fromClaude(input, opts = {}) {
   const account = opts.account || undefined;
   const machine = opts.machine ?? machineName();
   const lead = `${source}:${shortId(input.session_id)}`;
-  const team = teamFromCwd(input.cwd);
+  // AGENT_FLOOR_TEAM picks the room by hand, so it wins over the rooms file.
+  const room = process.env.AGENT_FLOOR_TEAM ? null : roomForPath(opts.rooms, input.cwd);
+  const team = room ? room.name : teamFromCwd(input.cwd);
   const base = {
     agent: lead,
     team,
     source,
     account,
     machine,
-    name: process.env.AGENT_FLOOR_NAME || opts.name || (source === 'codex' ? 'Codex' : 'Claude'),
+    name: process.env.AGENT_FLOOR_NAME || room?.leadName || opts.name || (source === 'codex' ? 'Codex' : 'Claude'),
     role: 'Lead',
   };
   // Inside a subagent, newer Claude Code versions add agent_id / agent_type.
@@ -58,11 +63,13 @@ export function fromClaude(input, opts = {}) {
         const type = toolInput.subagent_type || 'general-purpose';
         const key = input.tool_use_id || slugKey(toolInput.description || type);
         const stage = stageOf(toolInput.description, share ? toolInput.prompt : undefined);
+        // A type on the room's roster lights up its standing desk instead of opening a new one.
+        const desk = rosterEntry(room, type) ? rosterId(room.slug, type) : `${lead}:${shortId(key, 12)}`;
         return [
           { type: 'tool', ...actor, tool, activity: describeTool(tool, toolInput) },
           {
             type: 'join',
-            agent: `${lead}:${shortId(key, 12)}`,
+            agent: desk,
             parent: lead,
             team,
             source,
@@ -89,6 +96,17 @@ export function fromClaude(input, opts = {}) {
 
     case 'PostToolUse': {
       if (SPAWN_TOOLS.has(tool)) {
+        const type = toolInput.subagent_type || 'general-purpose';
+        const entry = rosterEntry(room, type);
+        if (entry) {
+          const desk = rosterId(room.slug, type);
+          return [
+            { type: 'message', agent: desk, team, source, to: lead, text: 'Report ready' },
+            // `done` only matters if the floor has not loaded this rooms file yet.
+            { type: 'status', agent: desk, parent: null, status: 'done' },
+            { type: 'status', ...base, status: 'thinking', activity: `Reviewing ${entry.name || pretty(type)} report` },
+          ];
+        }
         const key = input.tool_use_id || slugKey(toolInput.description || toolInput.subagent_type || 'general-purpose');
         const child = `${lead}:${shortId(key, 12)}`;
         return [
@@ -97,7 +115,11 @@ export function fromClaude(input, opts = {}) {
           { type: 'status', ...base, status: 'thinking', activity: `Reviewing ${pretty(toolInput.subagent_type || 'helper')} report` },
         ];
       }
-      return [{ type: 'status', ...actor, status: 'thinking', activity: `Done: ${describeTool(tool, toolInput)}` }];
+      const events = [{ type: 'status', ...actor, status: 'thinking', activity: `Done: ${describeTool(tool, toolInput)}` }];
+      // A report or decision saved into a mail folder flies to the roster desk that handles it.
+      const mail = WRITE_TOOLS.has(tool) ? mailTarget(opts.rooms, toolInput.file_path) : null;
+      if (mail) events.push({ type: 'message', ...actor, to: mail.to, text: mail.text });
+      return events;
     }
 
     case 'Notification':

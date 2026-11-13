@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { accountLabel, claudeConfigDirFor, claudeSetupTargets } from '../lib/accounts.mjs';
+import { loadRooms, roomsPath } from '../lib/rooms.mjs';
 import { HooksSectionExists, appendYamlHooks, mergeClaudeHooks, mergeCursorHooks, mergePiExtensions, updateJsonFile, updateTextFile } from '../lib/settings.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -197,6 +198,16 @@ function claudeAccount(cwd, installedFor) {
   return accountLabel(dir, config, home);
 }
 
+// An invalid rooms file must not stop the hook: the session lands in a room named
+// after its folder, and `POST /reload` reports what is wrong with the file.
+function hookRooms() {
+  try {
+    return loadRooms(roomsPath(localState.DIR), homedir());
+  } catch {
+    return null;
+  }
+}
+
 async function hook(kind) {
   let response = '';
   try {
@@ -204,7 +215,7 @@ async function hook(kind) {
       const { fromClaude } = await import('../adapters/claude.mjs');
       const input = parseJson(await readStdin());
       const account = claudeAccount(input?.cwd, flags(rest.slice(1))['config-dir']);
-      await postOrLaunch(fromClaude(input, { account }));
+      await postOrLaunch(fromClaude(input, { account, rooms: hookRooms() }));
     } else if (kind === 'codex') {
       const { fromCodex } = await import('../adapters/codex.mjs');
       // notify passes JSON as the last argv entry; hooks pass it on stdin.
@@ -424,7 +435,7 @@ async function start(args) {
   const port = Number(f.port) || undefined;
   const host = f.host || undefined;
   try {
-    await startServer({ port, host });
+    await startServer({ port, host, floorDir: localState.DIR });
     if (f.open) await openApp({ browser: Boolean(f.browser) });
     console.log('Connect an agent:  agent-floor setup claude | codex | cursor | hermes | opencode | pi');
     console.log('Press Ctrl+C to stop.');
