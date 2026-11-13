@@ -56,7 +56,7 @@ The floor binds the hint to the oldest unbound helper of that `role` under `lead
 
 ## Helpers that stay
 
-A helper that joined with `stay: true` is not removed when it finishes. When its parent leaves, it leaves too. If the same parent later sends a `join` for a new id with the same `role` while that helper is `done`, the floor reuses the helper's desk and keeps its name: the new id becomes an alias, and every later event for it lands on that desk. The aliases are in `state.aliases` (new id to desk id). A helper that is still busy is never reused, so parallel helpers of one role each get a desk.
+A helper that joined with `stay: true` is not removed when it finishes. When its parent leaves, it leaves too. If the same parent later sends a `join` for a new id with the same `role` while that helper is `done`, the floor reuses the helper's desk, keeps its name and takes the `stage` from the new join: the new id becomes an alias, and every later event for it lands on that desk. The aliases are in `state.aliases` (new id to desk id). A helper that is still busy is never reused, so parallel helpers of one role each get a desk. A helper that stays silent for 2 hours is still removed.
 
 ## Reading state
 

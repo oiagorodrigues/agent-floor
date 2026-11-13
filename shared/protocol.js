@@ -191,6 +191,7 @@ function applyAliases(state, ev) {
     if (reuse) {
       aliases[ev.agent] = reuse.id;
       reuse.boundKey = undefined;
+      reuse.stage = undefined;
       // The desk keeps the name it already has.
       const { name, ...rest } = ev;
       ev = rest;

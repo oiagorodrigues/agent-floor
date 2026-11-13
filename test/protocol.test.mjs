@@ -311,6 +311,16 @@ test('crew mode reuses a finished desk when the same role is spawned again', () 
   assert.equal(helpers(s).length, 1);
 });
 
+test('a reused desk drops its old stage when the new spawn names none', () => {
+  const s = createState();
+  const crew = { crew: true };
+  feed(s, spawn('writer', 'tu_a', 'Stage 1 - draft'), crew);
+  feed(s, finish('writer', 'tu_a'), crew);
+  feed(s, spawn('writer', 'tu_b', 'Polish the draft'), crew);
+  const [desk] = helpers(s);
+  assert.equal(desk.stage, undefined);
+});
+
 test('crew mode opens a second desk while the first of that role is still busy', () => {
   const s = createState();
   const crew = { crew: true };
