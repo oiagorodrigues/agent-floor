@@ -5,7 +5,7 @@
 // for the hooks.json snippet.
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import { machineName, pretty, sharesConversation, shortId, slugKey, teamFromCwd } from './common.mjs';
+import { machineName, pretty, sharesConversation, shortId, slugKey, teamFromCwd } from '../common.mjs';
 
 export function fromCursor(input, { sharePrompts = sharesConversation(), machine = machineName() } = {}) {
   if (!input || typeof input !== 'object') return [];

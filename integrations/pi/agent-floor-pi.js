@@ -5,8 +5,8 @@
 // It runs inside the pi process, so it posts the events itself. Handlers never
 // wait for the floor, and every failure is swallowed: a floor that is down, slow
 // or rejecting must never slow down or break pi.
-import localState from '../desktop/state.cjs';
-import { PI_EVENTS, fromPi } from '../adapters/pi.mjs';
+import localState from '../../desktop/state.cjs';
+import { PI_EVENTS, fromPi } from './adapter.mjs';
 
 const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
 const URL_BASE = (process.env.AGENT_FLOOR_URL || `http://127.0.0.1:${PORT}`).replace(/\/$/, '');

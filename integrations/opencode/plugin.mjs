@@ -10,10 +10,10 @@
 // failure is dropped: a floor that is not running must never slow down or break
 // the agent.
 import { createRequire } from 'node:module';
-import { OPENCODE2_EVENTS, fromOpencodeV1, fromOpencodeV2 } from './opencode.mjs';
+import { OPENCODE2_EVENTS, fromOpencodeV1, fromOpencodeV2 } from './adapter.mjs';
 
 const require = createRequire(import.meta.url);
-const localState = require('../desktop/state.cjs');
+const localState = require('../../desktop/state.cjs');
 
 const POST_TIMEOUT_MS = 1200;
 // The most events POST /events accepts in one request.

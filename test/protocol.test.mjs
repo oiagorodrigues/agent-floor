@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyEvent, createState, normalizeEvent, removeAgents, sweep } from '../shared/protocol.js';
-import { fromClaude, stageOf } from '../adapters/claude.mjs';
-import { crewMode } from '../adapters/common.mjs';
-import { fromCodex } from '../adapters/codex.mjs';
-import { fromCursor, cursorResponse } from '../adapters/cursor.mjs';
+import { fromClaude, stageOf } from '../integrations/claude/adapter.mjs';
+import { crewMode } from '../integrations/common.mjs';
+import { fromCodex } from '../integrations/codex/adapter.mjs';
+import { fromCursor, cursorResponse } from '../integrations/cursor/adapter.mjs';
 
 const run = (state, raw) => applyEvent(state, normalizeEvent(raw));
 

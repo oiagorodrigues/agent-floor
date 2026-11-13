@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { startServer } from '../server/index.mjs';
 import { NAMES } from '../server/names.mjs';
 import { createRecent, RECENT_MAX } from '../server/recent.mjs';
-import { fromClaude } from '../adapters/claude.mjs';
-import { fromCodex } from '../adapters/codex.mjs';
-import { fromCursor } from '../adapters/cursor.mjs';
+import { fromClaude } from '../integrations/claude/adapter.mjs';
+import { fromCodex } from '../integrations/codex/adapter.mjs';
+import { fromCursor } from '../integrations/cursor/adapter.mjs';
 import { Recording } from '../shared/replay.js';
 import { buildLines, linesToText } from '../shared/office-log.js';
 

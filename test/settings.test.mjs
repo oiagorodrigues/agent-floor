@@ -6,7 +6,10 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, stat, symlink, writ
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isAgentFloorHook, mergeClaudeHooks, mergeCursorHooks, updateJsonFile } from '../lib/settings.mjs';
+import { mergeClaudeHooks } from '../integrations/claude/index.mjs';
+import { isAgentFloorHook } from '../integrations/cli.mjs';
+import { mergeCursorHooks } from '../integrations/cursor/index.mjs';
+import { updateJsonFile } from '../lib/settings.mjs';
 
 const ours = (cmd = "node '/app/bin/agent-floor.mjs' hook claude --config-dir '/h/.claude'") => ({
   PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: cmd, timeout: 5 }] }],

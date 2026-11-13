@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
-import { fromOpencodeV1, fromOpencodeV2, opencodeAgentId } from '../adapters/opencode.mjs';
-import { createPlugin } from '../adapters/opencode-plugin.mjs';
+import { fromOpencodeV1, fromOpencodeV2, opencodeAgentId } from '../integrations/opencode/adapter.mjs';
+import { createPlugin } from '../integrations/opencode/plugin.mjs';
 import { startServer } from '../server/index.mjs';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
@@ -203,7 +203,7 @@ async function withFloor(token, fn) {
 async function loadPlugin(home, env) {
   // desktop/state.cjs reads AGENT_FLOOR_HOME when it loads, so the plugin runs in a child process.
   const script = `
-    const { createPlugin } = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'adapters/opencode-plugin.mjs')).href)});
+    const { createPlugin } = await import(${JSON.stringify(pathToFileURL(join(ROOT, 'integrations/opencode/plugin.mjs')).href)});
     const hooks = await createPlugin().server({ directory: '/w/api' });
     await hooks['chat.message']({ sessionID: ${JSON.stringify(SESSION)} }, { parts: [{ type: 'text', text: 'rotate the prod API key' }] });
     await hooks['tool.execute.before']({ tool: 'bash', sessionID: ${JSON.stringify(SESSION)}, callID: 'c1' }, { args: { command: 'npm test' } });
@@ -238,7 +238,7 @@ const setup = (home, ...args) =>
 test('setup opencode prints the plugin, and --write installs it privately with a backup', async () => {
   const home = await tempHome();
   const path = join(home, '.config/opencode/plugins/agent-floor.js');
-  const pluginUrl = pathToFileURL(join(ROOT, 'adapters/opencode-plugin.mjs')).href;
+  const pluginUrl = pathToFileURL(join(ROOT, 'integrations/opencode/plugin.mjs')).href;
 
   const dry = await setup(home);
   assert.match(dry.stdout, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

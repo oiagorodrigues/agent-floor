@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyEvent, createState, normalizeEvent } from '../shared/protocol.js';
-import { fromClaude } from '../adapters/claude.mjs';
-import { fromCodex } from '../adapters/codex.mjs';
-import { fromCursor } from '../adapters/cursor.mjs';
-import { fromOpencodeV2 } from '../adapters/opencode.mjs';
-import { fromPi } from '../adapters/pi.mjs';
+import { fromClaude } from '../integrations/claude/adapter.mjs';
+import { fromCodex } from '../integrations/codex/adapter.mjs';
+import { fromCursor } from '../integrations/cursor/adapter.mjs';
+import { fromOpencodeV2 } from '../integrations/opencode/adapter.mjs';
+import { fromPi } from '../integrations/pi/adapter.mjs';
 
 const run = (state, raw) => applyEvent(state, normalizeEvent(raw));
 

@@ -7,11 +7,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyEvent, createState, normalizeEvent } from '../shared/protocol.js';
-import { fromPi } from '../adapters/pi.mjs';
-import { mergePiExtensions } from '../lib/settings.mjs';
+import { fromPi } from '../integrations/pi/adapter.mjs';
+import { mergePiExtensions } from '../integrations/pi/index.mjs';
 
 const root = resolve(fileURLToPath(import.meta.url), '../..');
-const EXTENSION = join(root, 'extensions', 'agent-floor-pi.js');
+const EXTENSION = join(root, 'integrations', 'pi', 'agent-floor-pi.js');
 const tempDir = async (prefix) => realpath(await mkdtemp(join(tmpdir(), prefix)));
 
 // Event shapes from pi's packages/coding-agent/src/core/extensions/types.ts and docs/extensions.md.
@@ -143,7 +143,7 @@ test('the pi extension posts mapped events in order with the bearer token', asyn
   process.env.AGENT_FLOOR_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.AGENT_FLOOR_HOME = floorHome;
   delete process.env.AGENT_FLOOR_SHARE_PROMPTS;
-  const { default: agentFloor } = await import('../extensions/agent-floor-pi.js');
+  const { default: agentFloor } = await import('../integrations/pi/agent-floor-pi.js');
 
   const handlers = new Map();
   agentFloor({ on: (name, handler) => handlers.set(name, handler) });
@@ -176,7 +176,7 @@ test('a floor that never answers cannot keep pi from exiting', async (t) => {
   process.env.AGENT_FLOOR_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.AGENT_FLOOR_HOME = floorHome;
   // A query string loads a second copy of the module, so it reads this test's URL.
-  const { default: agentFloor } = await import('../extensions/agent-floor-pi.js?hang');
+  const { default: agentFloor } = await import('../integrations/pi/agent-floor-pi.js?hang');
   const handlers = new Map();
   agentFloor({ on: (name, handler) => handlers.set(name, handler) });
   const ctx = { cwd: '/w/shop', sessionManager: { getSessionId: () => SESSION_ID }, isIdle: () => false };

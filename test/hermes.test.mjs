@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyEvent, createState, normalizeEvent } from '../shared/protocol.js';
-import { fromHermes } from '../adapters/hermes.mjs';
-import { appendYamlHooks, HooksSectionExists } from '../lib/settings.mjs';
+import { fromHermes } from '../integrations/hermes/adapter.mjs';
+import { appendYamlHooks, HooksSectionExists } from '../integrations/hermes/index.mjs';
 import { startServer } from '../server/index.mjs';
 
 const CLI = resolve(fileURLToPath(import.meta.url), '../../bin/agent-floor.mjs');
