@@ -4,6 +4,7 @@ import { applyEvent, createState, normalizeEvent } from '../shared/protocol.js';
 import { fromClaude } from '../adapters/claude.mjs';
 import { fromCodex } from '../adapters/codex.mjs';
 import { fromCursor } from '../adapters/cursor.mjs';
+import { fromOpencodeV2 } from '../adapters/opencode.mjs';
 
 const run = (state, raw) => applyEvent(state, normalizeEvent(raw));
 
@@ -24,6 +25,7 @@ const claudeSpawn = { hook_event_name: 'PreToolUse', session_id: 's1', cwd: '/x/
 const codexTurn = { type: 'agent-turn-complete', 'thread-id': 't-1', cwd: '/a/api' };
 const codexHook = { hook_event_name: 'SessionStart', session_id: 'c1', cwd: '/a/api' };
 const cursorEdit = { hook_event_name: 'afterFileEdit', conversation_id: 'c1', workspace_roots: ['/w/site'], file_path: '/w/site/a.md' };
+const opencodeTool = { sessionID: 'ses_1', tool: 'read', input: { filePath: '/w/site/a.md' } };
 const cursorSubagent = { hook_event_name: 'subagentStop', conversation_id: 'c1', workspace_roots: ['/w/site'], subagent_type: 'explore', status: 'completed' };
 
 test('normalizeEvent trims and caps the machine name', () => {
@@ -74,6 +76,12 @@ test('cursor subagents carry the lead machine', () => {
   assert.ok(agents.every((a) => a.machine === 'work-laptop'));
 });
 
+test('opencode tags its events with AGENT_FLOOR_MACHINE', () => {
+  withMachineEnv('work-laptop', () => {
+    assert.equal(fromOpencodeV2('tool.execute.before', opencodeTool)[0].machine, 'work-laptop');
+  });
+});
+
 test('no machine is sent when AGENT_FLOOR_MACHINE is unset or blank', () => {
   for (const value of [undefined, '   ']) {
     const events = withMachineEnv(value, () => [
@@ -83,6 +91,7 @@ test('no machine is sent when AGENT_FLOOR_MACHINE is unset or blank', () => {
       ...fromCodex(codexHook),
       ...fromCursor(cursorEdit),
       ...fromCursor(cursorSubagent),
+      ...fromOpencodeV2('tool.execute.before', opencodeTool),
     ]);
     assert.ok(events.every((e) => e.machine === undefined));
   }

@@ -4,7 +4,7 @@ A live 3D office for your coding agents.
 
 Every agent gets a character and a desk inside one office building. Each project or team gets its own glass-walled office block off the main corridor, next to a lobby, kitchen, meeting room and lounge. You can watch agents walk in the front door, find their desk, type, think, raise a hand when they need you, and throw paper planes at each other when they talk. Click anyone to see exactly what they are doing.
 
-Works with **Claude Code**, **Codex**, **Cursor**, **Hermes Agent**, and anything else that can send an HTTP request.
+Works with **Claude Code**, **Codex**, **Cursor**, **Hermes Agent**, **opencode**, and anything else that can send an HTTP request.
 
 **[Try the live demo](https://develop212.github.io/agent-floor/)** (runs in your browser, no install).
 
@@ -111,6 +111,15 @@ agent-floor setup hermes --write     # appends it, if the file has no hooks: sec
 
 Uses [Hermes Agent](https://github.com/NousResearch/hermes-agent) shell hooks: `on_session_start`, `pre_llm_call`, `pre_tool_call`, `post_tool_call`, `on_session_end` and `on_session_finalize`. `--write` keeps a timestamped backup, and if your config already has a `hooks:` section it changes nothing and prints the entries for you to merge by hand. Hermes asks you to approve each new hook the next time `hermes chat` starts; `hermes hooks list` shows which ones are approved. Set `HERMES_HOME` to set up another profile.
 
+### opencode
+
+```bash
+agent-floor setup opencode --write     # ~/.config/opencode/plugins/agent-floor.js
+agent-floor setup opencode --project   # .opencode/plugins/agent-floor.js in this repo
+```
+
+Installs a small plugin file that loads `adapters/opencode-plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup.
+
 ### Anything else
 
 Post JSON to `http://localhost:4317/events` with the token from `~/.agent-floor/token`:
@@ -139,7 +148,7 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 | `AGENT_FLOOR_HOST` | `127.0.0.1` | server |
 | `AGENT_FLOOR_URL` | `http://127.0.0.1:4317` | hooks, `emit`, `demo` |
 | `AGENT_FLOOR_TEAM` | project folder name | hooks: put this session in a named room |
-| `AGENT_FLOOR_NAME` | `Claude`, `Codex`, `Cursor` | hooks: the lead's display name |
+| `AGENT_FLOOR_NAME` | `Claude`, `Codex`, `Cursor`, `Hermes`, `OpenCode` | hooks: the lead's display name |
 | `AGENT_FLOOR_MACHINE` | unset | hooks: this computer's name, shown as a badge on its agents' name tags and as "on work-laptop" on the agent card |
 | `AGENT_FLOOR_AUTOLAUNCH` | `1` | set to `0` so hooks never open the app |
 | `AGENT_FLOOR_SHARE_PROMPTS` | `0` | set to `1` to show your prompts, replies and agent thoughts on the floor |

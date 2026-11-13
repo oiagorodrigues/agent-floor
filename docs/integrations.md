@@ -99,6 +99,32 @@ Hermes asks you to approve each `(event, command)` pair the first time a foregro
 
 The hook prints nothing and always exits 0, so it never blocks a tool call, rewrites arguments or injects context. Subagents started with `delegate_task` run under their own session id, so their tool calls appear on a separate Hermes desk in the same room.
 
+## opencode
+
+`agent-floor setup opencode --write` writes this file to `~/.config/opencode/plugins/agent-floor.js` (or `$XDG_CONFIG_HOME/opencode/plugins/`), and `--project` writes it to `.opencode/plugins/` in the current repository. opencode loads every `.js` file in those folders. Without `--write`, setup only prints the file and the path. An existing file is backed up next to it with a timestamp, and a new one is owner-only.
+
+```js
+import { createPlugin } from "file:///absolute/path/agent-floor/adapters/opencode-plugin.mjs";
+
+export default createPlugin();
+```
+
+The plugin runs inside opencode, so it posts to the floor itself, with the token from `~/.agent-floor/token` (or `$AGENT_FLOOR_HOME/token`) and a 1.2 second timeout. It sends one request at a time so events arrive in order, and each copy of the plugin on OpenCode 2 only reports events from its own project. Nothing it does is awaited by opencode and every failure is dropped. It never opens the app: start the floor first, or let a Claude Code or Cursor hook open it.
+
+One default export serves both plugin APIs, as [opencode's migration guide](https://opencode.ai/docs/build/plugins/migrate-v1/) describes: OpenCode 2 reads `id` and `setup()`, OpenCode 1 (1.18.29 and newer) calls `server()`. The id is `agent-floor`, so OpenCode 2 loads only one copy if you install it both globally and in a project. OpenCode 1 loads both and posts every event twice.
+
+| OpenCode 1 ([plugins](https://github.com/anomalyco/opencode/blob/85a043926abf98ca967a24b7c12c0aa6b7d81cd3/services/site/src/docs/v1/content/plugins.mdx)) | OpenCode 2 ([server plugins](https://opencode.ai/docs/build/plugins/server/)) | On the floor |
+| --- | --- | --- |
+| `chat.message` | `ctx.session.hook("prompt")` | Thinking. Your prompt is shown only with `AGENT_FLOOR_SHARE_PROMPTS=1`. |
+| `tool.execute.before` | `ctx.tool.hook("execute.before")` | Working. The monitor shows the tool and a readable summary ("Running npm test", "Editing cart.ts"). |
+| `tool.execute.after` | `ctx.tool.hook("execute.after")` | Thinking, "Done: ...". |
+| `session.status` idle, `session.idle` | same, from `ctx.event.subscribe()` | Idle. |
+| `session.error` | `session.execution.failed` | Error. |
+| `permission.asked` | same | Waiting: the lead waves for you. |
+| `session.deleted` | same | The lead walks out. |
+
+Each session is one agent, `opencode:<last 8 characters of the session id>`, in a room named after the project folder. Subagents started with the `task` tool run in their own sessions, so they get their own desks. The plugin only reads hook payloads and never changes tool input.
+
 ## Your own agents
 
 ### Python
