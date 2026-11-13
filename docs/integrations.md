@@ -66,7 +66,7 @@ If your Codex build supports Claude-style hooks with `hook_event_name` payloads 
 
 Hooks that gate permissions (`beforeShellExecution`, `beforeMCPExecution`, `beforeReadFile`, `beforeTabFileRead`, `preToolUse`, `subagentStart`) are deliberately left out. Cursor's [hooks docs](https://cursor.com/docs/hooks) say a permission hook must answer `allow` or `deny`, and that invalid JSON or a response that doesn't match the schema blocks the action. Agent Floor has no neutral answer to give there, so it never subscribes to one.
 
-That is why a Cursor helper appears on the floor when it finishes rather than when it starts. When `subagentStop` arrives, the helper joins at its lead's desk, reports back and is marked done, or red if it stopped with an error. Its task and summary are shown only with `AGENT_FLOOR_SHARE_PROMPTS=1`. `sessionEnd` makes the lead leave the floor.
+That is why a Cursor helper appears on the floor when it finishes rather than when it starts. When `subagentStop` arrives, the helper joins at its lead's desk, reports back and is marked done (also when it was aborted), or red if it stopped with an error. Its task, description and summary are shown only with `AGENT_FLOOR_SHARE_PROMPTS=1`. `sessionEnd` makes the lead leave the floor.
 
 Hook names have changed between Cursor releases, so if one is not recognised by your version, Cursor ignores it.
 

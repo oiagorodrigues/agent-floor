@@ -3,6 +3,7 @@
 // that observe (after*, stop, subagentStop, sessionEnd, beforeSubmitPrompt) so
 // Agent Floor can never change a permission decision. See docs/integrations.md
 // for the hooks.json snippet.
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { machineName, pretty, sharesConversation, shortId, slugKey, teamFromCwd } from './common.mjs';
 
@@ -54,19 +55,21 @@ export function fromCursor(input, { sharePrompts = sharesConversation(), machine
   }
 }
 
+const SUBAGENT_ENDINGS = {
+  completed: { status: 'done', report: 'Report ready', activity: 'Handed back results' },
+  aborted: { status: 'done', report: 'Stopped early', activity: 'Stopped early' },
+  error: { status: 'error', report: 'Hit an error', activity: 'Stopped with an error' },
+};
+
 // subagentStart is a permission hook: Cursor requires it to answer allow or deny.
 // So the helper's whole visit is drawn when subagentStop reports it: it joins with
 // its brief, reports back to the lead and finishes.
 function subagentVisit(input, base, sharePrompts) {
-  const lead = input.parent_conversation_id ? { ...base, agent: `cursor:${shortId(input.parent_conversation_id)}` } : base;
   const type = input.subagent_type || 'generalPurpose';
-  const failed = input.status === 'error';
-  const helper = {
-    agent: `${lead.agent}:${shortId(input.subagent_id || slugKey(type), 12)}`,
-    parent: lead.agent,
-    team: lead.team,
-    source: lead.source,
-  };
+  const ending = SUBAGENT_ENDINGS[input.status] ?? SUBAGENT_ENDINGS.completed;
+  // subagentStop carries no subagent id; the transcript path is the one per-subagent value.
+  const key = input.agent_transcript_path ? createHash('sha256').update(String(input.agent_transcript_path)).digest('hex') : slugKey(type);
+  const helper = { agent: `${base.agent}:${shortId(key, 12)}`, parent: base.agent, team: base.team, source: base.source };
   return [
     {
       type: 'join',
@@ -75,17 +78,11 @@ function subagentVisit(input, base, sharePrompts) {
       role: type,
       status: 'working',
       activity: `${pretty(type)} task`,
-      text: sharePrompts ? input.task : undefined,
+      text: sharePrompts ? input.task || input.description : undefined,
     },
-    {
-      type: 'message',
-      ...helper,
-      to: lead.agent,
-      text: (sharePrompts && input.summary) || (failed ? 'Hit an error' : 'Report ready'),
-      status: failed ? 'error' : 'done',
-    },
-    { type: 'status', agent: helper.agent, status: failed ? 'error' : 'done', activity: failed ? 'Stopped with an error' : 'Handed back results' },
-    { type: 'status', ...lead, status: 'thinking', activity: `Reviewing ${pretty(type)} report` },
+    { type: 'message', ...helper, to: base.agent, text: (sharePrompts && input.summary) || ending.report, status: ending.status },
+    { type: 'status', agent: helper.agent, status: ending.status, activity: ending.activity },
+    { type: 'status', ...base, status: 'thinking', activity: `Reviewing ${pretty(type)} report` },
   ];
 }
 

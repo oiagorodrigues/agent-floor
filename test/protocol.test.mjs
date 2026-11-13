@@ -78,7 +78,7 @@ test('prompts, replies and thoughts stay off the floor unless shared', () => {
     prompt: 'secret ask',
     text: 'secret thought',
   }));
-  const cursorSubagent = { hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'sub1', subagent_type: 'explore', task: 'secret brief', summary: 'secret findings', status: 'completed' };
+  const cursorSubagent = { hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_type: 'explore', task: 'secret brief', description: 'secret label', summary: 'secret findings', status: 'completed' };
   const hidden = [
     ...fromClaude(claudePrompt, { sharePrompts: false }),
     ...fromClaude(spawn, { sharePrompts: false }),
@@ -97,6 +97,7 @@ test('prompts, replies and thoughts stay off the floor unless shared', () => {
   const sharedSubagent = fromCursor(cursorSubagent, { sharePrompts: true });
   assert.equal(sharedSubagent.find((e) => e.type === 'join').text, 'secret brief');
   assert.equal(sharedSubagent.find((e) => e.type === 'message').text, 'secret findings');
+  assert.equal(fromCursor({ ...cursorSubagent, task: undefined }, { sharePrompts: true }).find((e) => e.type === 'join').text, 'secret label');
 });
 
 test('claude account reaches the lead and its helpers', () => {
@@ -125,47 +126,63 @@ const cursorCommon = {
   cursor_version: '2.4.0',
   workspace_roots: ['/home/me/storefront'],
   user_email: 'me@example.com',
+  transcript_path: '/home/me/.cursor/transcripts/conv-1234abcd.jsonl',
 };
 const cursorSubagentStop = (over = {}) => ({
   ...cursorCommon,
   hook_event_name: 'subagentStop',
-  parent_conversation_id: 'conv-1234abcd',
-  subagent_id: 'sub-9f8e7d6c',
   subagent_type: 'explore',
-  task: 'Find where checkout totals are computed',
   status: 'completed',
+  task: 'Find where checkout totals are computed',
+  description: 'Find checkout totals',
   summary: 'Totals are computed in cart/total.ts',
+  duration_ms: 42000,
+  message_count: 6,
+  tool_call_count: 9,
+  loop_count: 0,
   modified_files: [],
+  agent_transcript_path: '/home/me/.cursor/transcripts/sub-1.jsonl',
   ...over,
 });
+const lead = 'cursor:conv1234';
+const visit = (payload) => {
+  const s = createState();
+  const effects = fromCursor(payload, { sharePrompts: false }).flatMap((ev) => run(s, ev).effects);
+  return { s, effects, helpers: Object.values(s.agents).filter((a) => a.parent === lead) };
+};
 
 test('cursor subagentStop brings a helper in, reports back and finishes', () => {
-  const s = createState();
-  for (const ev of fromCursor({ ...cursorCommon, hook_event_name: 'beforeSubmitPrompt', prompt: 'x' }, { sharePrompts: false })) run(s, ev);
-  const effects = fromCursor(cursorSubagentStop(), { sharePrompts: false }).flatMap((ev) => run(s, ev).effects);
-  const helper = s.agents['cursor:conv1234:sub9f8e7d6c'];
-  assert.equal(helper.parent, 'cursor:conv1234');
+  const { s, effects, helpers } = visit(cursorSubagentStop());
+  assert.equal(helpers.length, 1);
+  const [helper] = helpers;
   assert.equal(helper.team, 'storefront');
   assert.equal(helper.role, 'explore');
   assert.equal(helper.status, 'done');
-  assert.equal(s.agents['cursor:conv1234'].status, 'thinking');
-  assert.ok(effects.some((e) => e.kind === 'message' && e.from === 'cursor:conv1234' && e.to === helper.id), 'lead briefs the helper');
-  assert.ok(effects.some((e) => e.kind === 'message' && e.from === helper.id && e.to === 'cursor:conv1234' && e.text === 'Report ready'));
-  assert.equal(Object.keys(s.agents).length, 2);
+  assert.equal(s.agents[lead].status, 'thinking');
+  assert.ok(effects.some((e) => e.kind === 'message' && e.from === lead && e.to === helper.id), 'lead briefs the helper');
+  assert.ok(effects.some((e) => e.kind === 'message' && e.from === helper.id && e.to === lead && e.text === 'Report ready'));
 });
 
-test('cursor subagentStop with an error leaves the helper red', () => {
+test('cursor subagentStop with an error leaves the helper red, aborted ends it done', () => {
+  const failed = visit(cursorSubagentStop({ status: 'error' })).helpers[0];
+  assert.equal(failed.status, 'error');
+  assert.equal(failed.activity, 'Stopped with an error');
+  const aborted = visit(cursorSubagentStop({ status: 'aborted' })).helpers[0];
+  assert.equal(aborted.status, 'done');
+  assert.equal(aborted.activity, 'Stopped early');
+});
+
+test('cursor subagents get one desk per transcript', () => {
   const s = createState();
-  for (const ev of fromCursor(cursorSubagentStop({ status: 'error', summary: undefined }), { sharePrompts: false })) run(s, ev);
-  const helper = s.agents['cursor:conv1234:sub9f8e7d6c'];
-  assert.equal(helper.status, 'error');
-  assert.equal(helper.activity, 'Stopped with an error');
+  for (const path of ['/t/sub-1.jsonl', '/t/sub-2.jsonl', '/t/sub-1.jsonl'])
+    for (const ev of fromCursor(cursorSubagentStop({ agent_transcript_path: path }), { sharePrompts: false })) run(s, ev);
+  assert.equal(Object.values(s.agents).filter((a) => a.parent === lead).length, 2);
+  assert.doesNotMatch(JSON.stringify(s), /sub-1|transcripts/, 'the transcript path stays off the floor');
 });
 
-test('cursor subagentStop hangs the helper under parent_conversation_id', () => {
-  const evs = fromCursor(cursorSubagentStop({ conversation_id: 'child-7777' }), { sharePrompts: false });
-  assert.equal(evs.find((e) => e.type === 'join').parent, 'cursor:conv1234');
-  assert.equal(evs.at(-1).agent, 'cursor:conv1234');
+test('cursor hooks never forward the user email', () => {
+  const evs = ['beforeSubmitPrompt', 'afterFileEdit', 'stop', 'sessionEnd'].flatMap((hook_event_name) => fromCursor({ ...cursorCommon, hook_event_name }));
+  assert.doesNotMatch(JSON.stringify([...evs, ...fromCursor(cursorSubagentStop(), { sharePrompts: true })]), /me@example\.com/);
 });
 
 test('cursor sessionEnd makes the lead leave', () => {
@@ -175,12 +192,11 @@ test('cursor sessionEnd makes the lead leave', () => {
     session_id: 'conv-1234abcd',
     reason: 'user_close',
     duration_ms: 45000,
-    is_background_agent: false,
     final_status: 'completed',
   });
   assert.deepEqual(
     evs.map((e) => [e.type, e.agent]),
-    [['leave', 'cursor:conv1234']],
+    [['leave', lead]],
   );
 });
 
