@@ -25,7 +25,7 @@ import { createRecent } from './recent.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MAX_BODY = 256 * 1024;
-const HOOK_SOURCES = new Set(['claude-code', 'codex', 'cursor']);
+const HOOK_SOURCES = new Set(['claude-code', 'codex', 'cursor', 'hermes', 'opencode', 'pi']);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
