@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import localState from '../desktop/state.cjs';
 import { applyEvent, createState, normalizeEvent, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
 import { pickName } from './names.mjs';
+import { redactDeep } from './redact.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MAX_BODY = 256 * 1024;
@@ -59,8 +60,10 @@ export function startServer({
     }
   }
 
+  // Redacting before normalizeEvent means secrets are masked before text is clipped,
+  // so a token cut at the length limit is still recognised.
   function ingest(raw) {
-    const ev = normalizeEvent(raw);
+    const ev = normalizeEvent(redactDeep(raw));
     if (!ev) return false;
     if (randomNames && ev.type !== 'reset') nameAgent(ev);
     const { effects } = applyEvent(state, ev);
