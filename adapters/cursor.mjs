@@ -3,15 +3,16 @@
 // that observe (after*, stop, beforeSubmitPrompt) so Agent Floor can never change
 // a permission decision. See docs/integrations.md for the hooks.json snippet.
 import { basename } from 'node:path';
-import { sharesConversation, shortId, teamFromCwd } from './common.mjs';
+import { machineName, sharesConversation, shortId, teamFromCwd } from './common.mjs';
 
-export function fromCursor(input, { sharePrompts = sharesConversation() } = {}) {
+export function fromCursor(input, { sharePrompts = sharesConversation(), machine = machineName() } = {}) {
   if (!input || typeof input !== 'object') return [];
   const root = Array.isArray(input.workspace_roots) ? input.workspace_roots[0] : undefined;
   const base = {
     agent: `cursor:${shortId(input.conversation_id)}`,
     team: teamFromCwd(root),
     source: 'cursor',
+    machine,
     name: process.env.AGENT_FLOOR_NAME || 'Cursor',
     role: 'Lead',
   };

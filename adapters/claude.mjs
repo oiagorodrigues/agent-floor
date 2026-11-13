@@ -1,13 +1,13 @@
 // Claude Code hooks -> Agent Floor events.
 // Receives the JSON object Claude Code writes to a hook's stdin.
 // https://docs.claude.com/en/docs/claude-code/hooks
-import { describeTool, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
+import { describeTool, machineName, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
 
 const SPAWN_TOOLS = new Set(['Task', 'Agent']);
 
 /**
  * @param {Record<string, any>} input hook payload
- * @param {{ source?: string, name?: string, account?: string | null, sharePrompts?: boolean }} [opts]
+ * @param {{ source?: string, name?: string, account?: string | null, machine?: string, sharePrompts?: boolean }} [opts]
  *   account: label of the Claude config dir the session runs under, shown on the agent card
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
@@ -16,6 +16,7 @@ export function fromClaude(input, opts = {}) {
   const source = opts.source || 'claude-code';
   const share = opts.sharePrompts ?? sharesConversation();
   const account = opts.account || undefined;
+  const machine = opts.machine ?? machineName();
   const lead = `${source}:${shortId(input.session_id)}`;
   const team = teamFromCwd(input.cwd);
   const base = {
@@ -23,6 +24,7 @@ export function fromClaude(input, opts = {}) {
     team,
     source,
     account,
+    machine,
     name: process.env.AGENT_FLOOR_NAME || opts.name || (source === 'codex' ? 'Codex' : 'Claude'),
     role: 'Lead',
   };
@@ -53,6 +55,7 @@ export function fromClaude(input, opts = {}) {
             team,
             source,
             account,
+            machine,
             name: pretty(type),
             role: type,
             status: 'thinking',

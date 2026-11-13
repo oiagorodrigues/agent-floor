@@ -5,17 +5,18 @@
 // pass a Claude-style payload ({ hook_event_name, ... }) on stdin; those are routed
 // through the Claude mapper with source "codex".
 import { fromClaude } from './claude.mjs';
-import { sharesConversation, shortId, teamFromCwd } from './common.mjs';
+import { machineName, sharesConversation, shortId, teamFromCwd } from './common.mjs';
 
-export function fromCodex(input, { sharePrompts = sharesConversation() } = {}) {
+export function fromCodex(input, { sharePrompts = sharesConversation(), machine = machineName() } = {}) {
   if (!input || typeof input !== 'object') return [];
-  if (input.hook_event_name) return fromClaude(input, { source: 'codex', name: 'Codex', sharePrompts });
+  if (input.hook_event_name) return fromClaude(input, { source: 'codex', name: 'Codex', sharePrompts, machine });
 
   const thread = input['thread-id'] || input.thread_id || input.session_id;
   const base = {
     agent: `codex:${shortId(thread)}`,
     team: teamFromCwd(input.cwd),
     source: 'codex',
+    machine,
     name: process.env.AGENT_FLOOR_NAME || 'Codex',
     role: 'Lead',
   };
