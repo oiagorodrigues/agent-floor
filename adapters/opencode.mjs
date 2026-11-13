@@ -5,7 +5,7 @@
 // hook; OpenCode 2 passes one event object per hook.
 // OpenCode 1: https://github.com/anomalyco/opencode/blob/85a043926abf98ca967a24b7c12c0aa6b7d81cd3/services/site/src/docs/v1/content/plugins.mdx
 // OpenCode 2: https://opencode.ai/docs/build/plugins/server/
-import { describeTool, sharesConversation, shortId, teamFromCwd } from './common.mjs';
+import { describeTool, machineName, sharesConversation, shortId, teamFromCwd } from './common.mjs';
 
 // opencode's built-in tool ids, named the way describeTool knows them.
 const CLAUDE_NAMES = {
@@ -37,12 +37,13 @@ export function opencodeAgentId(sessionID) {
   return `opencode:${shortId(String(sessionID ?? '').slice(-8))}`;
 }
 
-function eventsFor(change, { directory, sharePrompts = sharesConversation() } = {}) {
+function eventsFor(change, { directory, sharePrompts = sharesConversation(), machine = machineName() } = {}) {
   if (!change.sessionID) return [];
   const base = {
     agent: opencodeAgentId(change.sessionID),
     team: teamFromCwd(directory),
     source: 'opencode',
+    machine,
     name: process.env.AGENT_FLOOR_NAME || 'OpenCode',
     role: 'Lead',
   };
@@ -104,7 +105,7 @@ function firstText(parts) {
  * @param {'chat.message'|'tool.execute.before'|'tool.execute.after'|'event'} hook
  * @param {Record<string, any>} input the hook's first argument
  * @param {Record<string, any>} [output] the hook's second argument
- * @param {{ directory?: string, sharePrompts?: boolean }} [opts]
+ * @param {{ directory?: string, sharePrompts?: boolean, machine?: string }} [opts]
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
 export function fromOpencodeV1(hook, input, output, opts) {
@@ -127,7 +128,7 @@ export function fromOpencodeV1(hook, input, output, opts) {
  * OpenCode 2 hooks registered in the plugin's `setup(ctx)`, plus events from `ctx.event.subscribe()`.
  * @param {'tool.execute.before'|'tool.execute.after'|'session.prompt'|'event'} hook
  * @param {Record<string, any>} event the hook's event, or the bus event
- * @param {{ directory?: string, sharePrompts?: boolean }} [opts]
+ * @param {{ directory?: string, sharePrompts?: boolean, machine?: string }} [opts]
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
 export function fromOpencodeV2(hook, event, opts) {
