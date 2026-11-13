@@ -21,6 +21,10 @@ export interface InboundEvent {
   task?: string;
   to?: string | string[];
   subagent?: { key?: string; type?: string };
+  /** Short pipeline label shown on the name tag and card, e.g. "Stage 2". An empty string clears it. */
+  stage?: string;
+  /** On join with a parent: keep this helper at its desk after it finishes, until its parent leaves. */
+  stay?: boolean;
   ts?: number;
 }
 
@@ -41,6 +45,8 @@ export interface FloorEvent {
   tool?: string;
   text?: string;
   task?: string;
+  stage?: string;
+  stay?: boolean;
   to?: string[];
 }
 
@@ -69,6 +75,8 @@ export interface Agent {
   lastSeen: number;
   history: HistoryEntry[];
   boundKey?: string;
+  stage?: string;
+  stay?: boolean;
 }
 
 export interface Team {
@@ -83,6 +91,8 @@ export interface Team {
 export interface WorldState {
   teams: Record<string, Team>;
   agents: Record<string, Agent>;
+  /** Spawn ids folded into an existing desk, see `stay`. */
+  aliases?: Record<string, string>;
   seq: number;
   updatedAt: number;
 }
@@ -99,5 +109,7 @@ export const EVENT_TYPES: EventType[];
 export function createState(): WorldState;
 export function slug(value: unknown): string;
 export function normalizeEvent(raw: unknown, now?: number): FloorEvent | null;
+export function deskOf(state: WorldState, id: string): string;
 export function applyEvent(state: WorldState, ev: FloorEvent | null): { state: WorldState; effects: Effect[] };
+export function removeAgents(state: WorldState, ids: string[]): string[];
 export function sweep(state: WorldState, now?: number, opts?: { offlineMs?: number; doneHelperMs?: number; staleMs?: number }): string[];

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, createState, normalizeEvent, sweep } from '../shared/protocol.js';
-import { fromClaude } from '../adapters/claude.mjs';
+import { applyEvent, createState, normalizeEvent, removeAgents, sweep } from '../shared/protocol.js';
+import { fromClaude, stageOf } from '../adapters/claude.mjs';
+import { crewMode } from '../adapters/common.mjs';
 import { fromCodex } from '../adapters/codex.mjs';
 import { fromCursor, cursorResponse } from '../adapters/cursor.mjs';
 
@@ -217,4 +218,117 @@ test('sweep removes departed agents and empty teams', () => {
   run(s, { type: 'leave', agent: 'a', ts: 1000 });
   assert.deepEqual(sweep(s, 1000 + 60_000), ['a']);
   assert.equal(Object.keys(s.teams).length, 0);
+});
+
+const pipe = { session_id: 'sess1234', cwd: '/x/video' };
+const spawn = (type, id, description, prompt = 'Do the work') => ({
+  ...pipe,
+  hook_event_name: 'PreToolUse',
+  tool_name: 'Task',
+  tool_use_id: id,
+  tool_input: { subagent_type: type, description, prompt },
+});
+const finish = (type, id) => ({ ...spawn(type, id, ''), hook_event_name: 'PostToolUse' });
+const feed = (s, input, opts) => fromClaude(input, opts).flatMap((ev) => run(s, ev).effects);
+const helpers = (s) => Object.values(s.agents).filter((a) => a.parent);
+
+test('stage numbers in a spawn description label the helper', () => {
+  assert.equal(stageOf('Stage 2 - write the script'), 'Stage 2');
+  assert.equal(stageOf('run stage #03 checks'), 'Stage 3');
+  assert.equal(stageOf('Backstage review', 'staged rollout'), undefined);
+  const s = createState();
+  feed(s, spawn('trend-researcher', 'tu_1', 'Stage 1 - find trending topics'));
+  feed(s, spawn('helper', 'tu_2', 'Look around'));
+  assert.deepEqual(helpers(s).map((a) => a.stage), ['Stage 1', undefined]);
+});
+
+test('a stage in a hidden prompt stays off the floor', () => {
+  const input = spawn('writer', 'tu_1', 'Write the script', 'Stage 4 of the secret plan');
+  assert.equal(fromClaude(input, { sharePrompts: false })[1].stage, undefined);
+  assert.equal(fromClaude(input, { sharePrompts: true })[1].stage, 'Stage 4');
+});
+
+test('an empty stage clears the label', () => {
+  const s = createState();
+  run(s, { type: 'status', agent: 'a', stage: 'Stage 3' });
+  assert.equal(s.agents.a.stage, 'Stage 3');
+  run(s, { type: 'status', agent: 'a', activity: 'Still going' });
+  assert.equal(s.agents.a.stage, 'Stage 3', 'events without a stage keep it');
+  run(s, { type: 'status', agent: 'a', stage: '' });
+  assert.equal(s.agents.a.stage, undefined);
+});
+
+test('crew mode is off by default, so finished helpers are swept', () => {
+  assert.equal(crewMode({}), false);
+  assert.equal(crewMode({ AGENT_FLOOR_CREW: '1' }), true);
+  const prev = process.env.AGENT_FLOOR_CREW;
+  delete process.env.AGENT_FLOOR_CREW;
+  try {
+    const s = createState();
+    feed(s, spawn('researcher', 'tu_1', 'Stage 1'));
+    feed(s, finish('researcher', 'tu_1'));
+    const [kid] = helpers(s);
+    assert.equal(kid.stay, undefined);
+    assert.deepEqual(sweep(s, kid.lastSeen + 60_000), [kid.id]);
+  } finally {
+    if (prev !== undefined) process.env.AGENT_FLOOR_CREW = prev;
+  }
+});
+
+test('crew mode keeps finished helpers at their desks until the lead leaves', () => {
+  const s = createState();
+  const crew = { crew: true };
+  feed(s, { ...pipe, hook_event_name: 'SessionStart' }, crew);
+  feed(s, spawn('researcher', 'tu_1', 'Stage 1'), crew);
+  feed(s, finish('researcher', 'tu_1'), crew);
+  const [kid] = helpers(s);
+  assert.equal(kid.status, 'done');
+  assert.deepEqual(sweep(s, kid.lastSeen + 10 * 60_000), [], 'still at its desk');
+  const effects = feed(s, { ...pipe, hook_event_name: 'SessionEnd' }, crew);
+  assert.ok(effects.some((e) => e.kind === 'leave' && e.agent === kid.id), 'walks out with the lead');
+  assert.equal(s.agents[kid.id].status, 'offline');
+  assert.equal(sweep(s, kid.lastSeen + 10_000).length, 2);
+  assert.deepEqual(s.aliases, {});
+});
+
+test('crew mode reuses a finished desk when the same role is spawned again', () => {
+  const s = createState();
+  const crew = { crew: true };
+  feed(s, spawn('frontend-dev', 'tu_a', 'Stage 4 - build the video'), crew);
+  feed(s, finish('frontend-dev', 'tu_a'), crew);
+  const [first] = helpers(s);
+  first.name = 'Mira';
+  const effects = feed(s, spawn('frontend-dev', 'tu_b', 'Stage 5 - fix captions'), crew);
+  assert.equal(helpers(s).length, 1, 'no second desk');
+  assert.equal(first.status, 'thinking');
+  assert.equal(first.stage, 'Stage 5');
+  assert.equal(first.name, 'Mira', 'the desk keeps its name');
+  assert.ok(effects.some((e) => e.kind === 'message' && e.to === first.id), 'briefed again');
+  feed(s, { ...pipe, hook_event_name: 'PreToolUse', agent_id: 'ag_2', agent_type: 'frontend-dev', tool_name: 'Bash', tool_input: { command: 'npx remotion render' } }, crew);
+  assert.equal(first.activity, 'Running npx remotion render');
+  feed(s, finish('frontend-dev', 'tu_b'), crew);
+  assert.equal(first.status, 'done');
+  assert.equal(helpers(s).length, 1);
+});
+
+test('crew mode opens a second desk while the first of that role is still busy', () => {
+  const s = createState();
+  const crew = { crew: true };
+  feed(s, spawn('reviewer', 'tu_a', 'Review the API'), crew);
+  feed(s, spawn('reviewer', 'tu_b', 'Review the UI'), crew);
+  assert.equal(helpers(s).length, 2);
+});
+
+test('removing a reused desk forgets its aliases, so later events open a fresh desk', () => {
+  const s = createState();
+  const crew = { crew: true };
+  feed(s, spawn('writer', 'tu_a', 'Draft'), crew);
+  feed(s, finish('writer', 'tu_a'), crew);
+  feed(s, spawn('writer', 'tu_b', 'Redraft'), crew);
+  const [desk] = helpers(s);
+  assert.equal(Object.keys(s.aliases).length, 1);
+  assert.deepEqual(removeAgents(s, [desk.id, 'nobody']), [desk.id]);
+  assert.deepEqual(s.aliases, {});
+  feed(s, finish('writer', 'tu_b'), crew);
+  assert.equal(s.agents[desk.id], undefined, 'the removed desk does not come back');
 });

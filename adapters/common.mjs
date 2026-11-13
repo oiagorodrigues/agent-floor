@@ -10,6 +10,11 @@ export function machineName(env = process.env) {
   return String(env.AGENT_FLOOR_MACHINE ?? '').trim() || undefined;
 }
 
+/** Crew mode keeps finished helpers at their desks until their lead leaves. */
+export function crewMode(env = process.env) {
+  return env.AGENT_FLOOR_CREW === '1';
+}
+
 export function shortId(value, n = 8) {
   return String(value || 'local').replace(/[^a-zA-Z0-9]/g, '').slice(0, n) || 'local';
 }

@@ -1,20 +1,31 @@
 // Claude Code hooks -> Agent Floor events.
 // Receives the JSON object Claude Code writes to a hook's stdin.
 // https://docs.claude.com/en/docs/claude-code/hooks
-import { describeTool, machineName, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
+import { crewMode, describeTool, machineName, pretty, sharesConversation, shortId, shortToolName, slugKey, teamFromCwd } from './common.mjs';
 
 const SPAWN_TOOLS = new Set(['Task', 'Agent']);
 
+/** "Stage 2" when one of the texts names a pipeline stage near its start. */
+export function stageOf(...texts) {
+  for (const t of texts) {
+    const m = /\bstage\s*#?\s*(\d{1,2})\b/i.exec(String(t ?? '').slice(0, 400));
+    if (m) return `Stage ${Number(m[1])}`;
+  }
+  return undefined;
+}
+
 /**
  * @param {Record<string, any>} input hook payload
- * @param {{ source?: string, name?: string, account?: string | null, machine?: string, sharePrompts?: boolean }} [opts]
+ * @param {{ source?: string, name?: string, account?: string | null, machine?: string, sharePrompts?: boolean, crew?: boolean }} [opts]
  *   account: label of the Claude config dir the session runs under, shown on the agent card
+ *   crew: keep finished helpers at their desks (defaults to AGENT_FLOOR_CREW)
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
 export function fromClaude(input, opts = {}) {
   if (!input || typeof input !== 'object') return [];
   const source = opts.source || 'claude-code';
   const share = opts.sharePrompts ?? sharesConversation();
+  const crew = opts.crew ?? crewMode();
   const account = opts.account || undefined;
   const machine = opts.machine ?? machineName();
   const lead = `${source}:${shortId(input.session_id)}`;
@@ -46,6 +57,7 @@ export function fromClaude(input, opts = {}) {
       if (SPAWN_TOOLS.has(tool)) {
         const type = toolInput.subagent_type || 'general-purpose';
         const key = input.tool_use_id || slugKey(toolInput.description || type);
+        const stage = stageOf(toolInput.description, share ? toolInput.prompt : undefined);
         return [
           { type: 'tool', ...actor, tool, activity: describeTool(tool, toolInput) },
           {
@@ -61,6 +73,8 @@ export function fromClaude(input, opts = {}) {
             status: 'thinking',
             activity: toolInput.description || 'Starting',
             text: toolInput.description || (share ? toolInput.prompt : undefined),
+            stage,
+            stay: crew || undefined,
           },
         ];
       }

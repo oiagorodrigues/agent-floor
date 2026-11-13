@@ -645,6 +645,27 @@ button {
   text-overflow: ellipsis;
 }
 
+.tag-line .tag-stage,
+.card-stage {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--accent) 75%, var(--text));
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+.card-stage {
+  margin-right: 6px;
+}
+
+.tag-line .tag-stage[hidden] {
+  display: none;
+}
+
 .tag-line .dot {
   width: 8px;
   height: 8px;

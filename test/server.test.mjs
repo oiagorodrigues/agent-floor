@@ -126,3 +126,21 @@ test('shutdown needs JSON and the token, then closes the server', { timeout: 500
     await floor.close();
   }
 });
+
+test('a reused crew desk keeps its random name', () =>
+  withFloor(async (base) => {
+    const helper = { parent: 'claude-code:s1', source: 'claude-code', name: 'Researcher', role: 'researcher' };
+    await post(base, [
+      { type: 'join', agent: 'claude-code:s1', source: 'claude-code', name: 'Claude', role: 'Lead' },
+      { type: 'join', agent: 'claude-code:s1:tu1', ...helper, stay: true },
+      { type: 'status', agent: 'claude-code:s1:tu1', status: 'done' },
+    ]);
+    const first = (await names(base))['claude-code:s1:tu1'];
+    await post(base, [
+      { type: 'join', agent: 'claude-code:s1:tu2', ...helper, stay: true },
+      { type: 'message', agent: 'claude-code:s1:tu2', parent: 'claude-code:s1', source: 'claude-code', to: 'claude-code:s1', text: 'Report ready' },
+    ]);
+    const after = await names(base);
+    assert.equal(Object.keys(after).length, 2, 'no second desk');
+    assert.equal(after['claude-code:s1:tu1'], first);
+  }));
