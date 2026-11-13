@@ -2,9 +2,9 @@
 // agent-floor CLI
 //
 //   agent-floor [start] [--port 4317] [--open]   run the floor
-//   agent-floor hook <claude|codex|cursor>      used by agent hooks (reads stdin / argv)
+//   agent-floor hook <claude|codex|cursor|hermes>  used by agent hooks (reads stdin / argv)
 //   agent-floor emit --agent id --status working --activity "..."  [--team x] [--to id --text "..."]
-//   agent-floor setup <claude|codex|cursor> [--write] [--project]
+//   agent-floor setup <claude|codex|cursor|hermes> [--write] [--project]
 //   agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]
 //   agent-floor demo                             push a scripted demo into a running floor
 //   agent-floor stop                             stop the running floor and pause auto-open for 6 hours
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { accountLabel, claudeConfigDirFor, claudeSetupTargets } from '../lib/accounts.mjs';
-import { mergeClaudeHooks, mergeCursorHooks, updateJsonFile } from '../lib/settings.mjs';
+import { HooksSectionExists, appendYamlHooks, mergeClaudeHooks, mergeCursorHooks, updateJsonFile, updateTextFile } from '../lib/settings.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SELF = resolve(here, 'agent-floor.mjs');
@@ -216,6 +216,10 @@ async function hook(kind) {
       const input = parseJson(await readStdin());
       response = cursorResponse(input?.hook_event_name);
       await postOrLaunch(fromCursor(input));
+    } else if (kind === 'hermes') {
+      // Prints nothing: Hermes reads stdout as a block, modify or context directive.
+      const { fromHermes } = await import('../adapters/hermes.mjs');
+      await postOrLaunch(fromHermes(parseJson(await readStdin())));
     }
   } catch {
     // Floor not running, or bad payload. Stay silent.
@@ -288,13 +292,22 @@ function cursorHooks() {
   return { version: 1, hooks: Object.fromEntries(names.map((n) => [n, [{ command }]])) };
 }
 
+/** A `hooks:` block for Hermes' config.yaml. JSON strings are valid YAML double-quoted scalars. */
+async function hermesHooks() {
+  const { HERMES_EVENTS } = await import('../adapters/hermes.mjs');
+  const command = JSON.stringify(hookCmd('hermes'));
+  const lines = ['hooks:'];
+  for (const event of Object.keys(HERMES_EVENTS)) lines.push(`  ${event}:`, `    - command: ${command}`, '      timeout: 5');
+  return lines.join('\n') + '\n';
+}
+
 async function writeHooks(path, merge, opens) {
   const { changed, backup } = await updateJsonFile(path, merge);
   if (!changed) console.log(`${path} already has the current Agent Floor hooks.`);
   else console.log(`Merged Agent Floor hooks into ${path}${backup ? ` (backup at ${backup})` : ''}. ${opens}`);
 }
 
-const SETUP_USAGE = 'Usage: agent-floor setup <claude|codex|cursor> [--write] [--project]\n       agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]';
+const SETUP_USAGE = 'Usage: agent-floor setup <claude|codex|cursor|hermes> [--write] [--project]\n       agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]';
 
 async function setup(args) {
   const f = flags(args);
@@ -329,6 +342,26 @@ async function setup(args) {
       return;
     }
     await writeHooks(path, (current) => mergeCursorHooks(current, config), 'Agent Floor will open by itself the next time a Cursor agent runs.');
+  } else if (kind === 'hermes') {
+    const path = join(process.env.HERMES_HOME || join(homedir(), '.hermes'), 'config.yaml');
+    const block = await hermesHooks();
+    if (!f.write) {
+      console.log(`Add this to ${path} (or rerun with --write to append it for you):\n`);
+      console.log(block);
+      return;
+    }
+    let result;
+    try {
+      result = await updateTextFile(path, (current) => appendYamlHooks(current, block));
+    } catch (err) {
+      if (!(err instanceof HooksSectionExists)) throw err;
+      console.error(`${path} already has a "hooks:" section, so Agent Floor left it alone. Merge these entries into it by hand:\n`);
+      console.error(block);
+      process.exit(1);
+    }
+    if (!result.changed) console.log(`${path} already has the current Agent Floor hooks.`);
+    else console.log(`Added Agent Floor hooks to ${path}${result.backup ? ` (backup at ${result.backup})` : ''}.`);
+    console.log('Hermes asks you to approve each new hook the next time `hermes chat` starts (or start it once with --accept-hooks). `hermes hooks list` shows which ones are approved.');
   } else if (kind === 'codex') {
     const path = join(homedir(), '.codex', 'config.toml');
     console.log(`Add this line near the top of ${path}:\n`);
@@ -349,7 +382,7 @@ async function start(args) {
   try {
     await startServer({ port, host });
     if (f.open) await openApp({ browser: Boolean(f.browser) });
-    console.log('Connect an agent:  agent-floor setup claude | codex | cursor');
+    console.log('Connect an agent:  agent-floor setup claude | codex | cursor | hermes');
     console.log('Press Ctrl+C to stop.');
   } catch (err) {
     console.error(err.code === 'EADDRINUSE' ? `Port ${port || 4317} is already in use. Try --port 4318.` : err.message);
@@ -430,13 +463,13 @@ if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
 
   agent-floor                              open the desktop app (starts the floor too)
   agent-floor start [--port 4317] [--open] run the floor without a window
-  agent-floor setup <claude|codex|cursor> [--write] [--project]
+  agent-floor setup <claude|codex|cursor|hermes> [--write] [--project]
   agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]   (for claude --settings)
   agent-floor emit --agent <id> --status working --activity "Writing tests" [--team checkout]
   agent-floor demo [--agents 60]          (stress test with many agents)
   agent-floor stop                         stop the floor (the desktop app quits if it runs it); hooks wait 6 hours to reopen it
   agent-floor quiet [hours]                hooks don't open the floor for a while (default 6); a running floor stays up
-  agent-floor hook <claude|codex|cursor>    (called by agent hooks)
+  agent-floor hook <claude|codex|cursor|hermes>  (called by agent hooks)
 
 Environment: AGENT_FLOOR_URL, AGENT_FLOOR_PORT, AGENT_FLOOR_TEAM, AGENT_FLOOR_NAME,\n             AGENT_FLOOR_AUTOLAUNCH=0 (hooks never open the app)`);
 } else if (commands[cmd]) {
