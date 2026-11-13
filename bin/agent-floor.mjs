@@ -128,7 +128,8 @@ const APP_MODES = ['desktop', 'browser'];
 
 /** "desktop" (default) or "browser", from AGENT_FLOOR_APP or "app" in ~/.agent-floor/config.json. */
 function appMode() {
-  const mode = process.env.AGENT_FLOOR_APP || readConfig().app || 'desktop';
+  // Reads only the global key, so a hook can still open the floor while an agent section waits to be moved.
+  const mode = process.env.AGENT_FLOOR_APP || localState.readConfig().app || 'desktop';
   if (!APP_MODES.includes(mode)) throw new Error(`Unknown app mode "${mode}". Use ${APP_MODES.join(' or ')}.`);
   return mode;
 }

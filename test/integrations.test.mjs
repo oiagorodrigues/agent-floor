@@ -255,6 +255,23 @@ test('an agent section at the top level is refused with the file it should becom
   );
 });
 
+test('a half-moved config keeps the settings already under "agents" in the suggested file', () => {
+  const config = { agents: { claude: { defaultConfigDir: '~/.claude-new' } }, claude: { defaultConfigDir: '~/.claude-old', byPath: [] } };
+  assert.throws(
+    () => checkConfig(config, AGENTS, '/f/config.json'),
+    (err) => err.message.endsWith(JSON.stringify({ agents: { claude: { defaultConfigDir: '~/.claude-new', byPath: [] } } }, null, 2)),
+  );
+});
+
+test('setup stops on a config.json that is not valid JSON and names the file', async () => {
+  const { home, floorHome, env } = await tempHome();
+  await writeFile(join(floorHome, 'config.json'), '{ bad');
+  const { code, stdout, stderr } = await cli(['setup', 'cursor'], { env, cwd: home });
+  assert.equal(code, 1);
+  assert.equal(stdout, '');
+  assert.match(stderr, new RegExp(`^${join(floorHome, 'config.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: not valid JSON \\(.+\\)\\.\n$`));
+});
+
 test('setup and start stop on the old config shape and say how to move it', async () => {
   const { home, floorHome, env } = await tempHome();
   await writeConfig(floorHome, OLD_CONFIG);
