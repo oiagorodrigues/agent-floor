@@ -16,7 +16,7 @@ const tempDir = async (prefix) => realpath(await mkdtemp(join(tmpdir(), prefix))
 
 // Event shapes from pi's packages/coding-agent/src/core/extensions/types.ts and docs/extensions.md.
 const SESSION_ID = '0199f5a2-7c3e-7b41-9d2a-5c8e1f3a6b07';
-const opts = { cwd: '/w/shop', sessionId: SESSION_ID, sharePrompts: false };
+const opts = { cwd: '/w/shop', sessionId: SESSION_ID, sharePrompts: false, machine: 'work-laptop' };
 const samples = {
   start: { type: 'session_start', reason: 'startup' },
   prompt: { type: 'before_agent_start', messageType: 'user', prompt: 'my secret plan', images: [], systemPrompt: 'You are an expert coding assistant', systemPromptOptions: {} },
@@ -36,7 +36,7 @@ const samples = {
 
 test('pi adapter maps a session onto one lead desk', () => {
   const join = fromPi(samples.start, opts)[0];
-  assert.deepEqual(join, { type: 'join', agent: 'pi:5c8e1f3a6b07', team: 'shop', source: 'pi', name: 'Pi', role: 'Lead', status: 'idle', activity: 'Ready' });
+  assert.deepEqual(join, { type: 'join', agent: 'pi:5c8e1f3a6b07', team: 'shop', source: 'pi', machine: 'work-laptop', name: 'Pi', role: 'Lead', status: 'idle', activity: 'Ready' });
 
   const tool = (sample) => fromPi(sample, opts)[0];
   assert.deepEqual([tool(samples.bash).type, tool(samples.bash).tool, tool(samples.bash).activity], ['tool', 'bash', 'Running npm test']);

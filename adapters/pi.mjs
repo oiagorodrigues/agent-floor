@@ -2,7 +2,7 @@
 // Receives the event object pi passes to an extension's `pi.on(name, handler)`.
 // The extension that subscribes and posts lives in extensions/agent-floor-pi.js.
 // https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md#events
-import { describeTool, sharesConversation, teamFromCwd } from './common.mjs';
+import { describeTool, machineName, sharesConversation, teamFromCwd } from './common.mjs';
 
 /** The events extensions/agent-floor-pi.js subscribes to. */
 export const PI_EVENTS = [
@@ -27,7 +27,7 @@ function sessionKey(id) {
 
 /**
  * @param {Record<string, any>} event pi extension event
- * @param {{ cwd?: string, sessionId?: string, idle?: boolean, sharePrompts?: boolean }} [opts]
+ * @param {{ cwd?: string, sessionId?: string, idle?: boolean, sharePrompts?: boolean, machine?: string }} [opts]
  *   cwd, sessionId and idle come from the handler's ctx (ctx.cwd, ctx.sessionManager.getSessionId(), ctx.isIdle())
  * @returns {import('../shared/protocol.js').InboundEvent[]}
  */
@@ -38,6 +38,7 @@ export function fromPi(event, opts = {}) {
     agent: `pi:${sessionKey(opts.sessionId)}`,
     team: teamFromCwd(opts.cwd),
     source: 'pi',
+    machine: opts.machine ?? machineName(),
     name: process.env.AGENT_FLOOR_NAME || 'Pi',
     role: 'Lead',
   };

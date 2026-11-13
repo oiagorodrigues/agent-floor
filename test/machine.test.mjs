@@ -5,6 +5,7 @@ import { fromClaude } from '../adapters/claude.mjs';
 import { fromCodex } from '../adapters/codex.mjs';
 import { fromCursor } from '../adapters/cursor.mjs';
 import { fromOpencodeV2 } from '../adapters/opencode.mjs';
+import { fromPi } from '../adapters/pi.mjs';
 
 const run = (state, raw) => applyEvent(state, normalizeEvent(raw));
 
@@ -26,6 +27,8 @@ const codexTurn = { type: 'agent-turn-complete', 'thread-id': 't-1', cwd: '/a/ap
 const codexHook = { hook_event_name: 'SessionStart', session_id: 'c1', cwd: '/a/api' };
 const cursorEdit = { hook_event_name: 'afterFileEdit', conversation_id: 'c1', workspace_roots: ['/w/site'], file_path: '/w/site/a.md' };
 const opencodeTool = { sessionID: 'ses_1', tool: 'read', input: { filePath: '/w/site/a.md' } };
+const piStart = { type: 'session_start' };
+const piOpts = { cwd: '/w/site', sessionId: 'pi-session-1' };
 const cursorSubagent = { hook_event_name: 'subagentStop', conversation_id: 'c1', workspace_roots: ['/w/site'], subagent_type: 'explore', status: 'completed' };
 
 test('normalizeEvent trims and caps the machine name', () => {
@@ -82,6 +85,12 @@ test('opencode tags its events with AGENT_FLOOR_MACHINE', () => {
   });
 });
 
+test('pi tags its events with AGENT_FLOOR_MACHINE', () => {
+  withMachineEnv('work-laptop', () => {
+    assert.equal(fromPi(piStart, piOpts)[0].machine, 'work-laptop');
+  });
+});
+
 test('no machine is sent when AGENT_FLOOR_MACHINE is unset or blank', () => {
   for (const value of [undefined, '   ']) {
     const events = withMachineEnv(value, () => [
@@ -92,6 +101,7 @@ test('no machine is sent when AGENT_FLOOR_MACHINE is unset or blank', () => {
       ...fromCursor(cursorEdit),
       ...fromCursor(cursorSubagent),
       ...fromOpencodeV2('tool.execute.before', opencodeTool),
+      ...fromPi(piStart, piOpts),
     ]);
     assert.ok(events.every((e) => e.machine === undefined));
   }
