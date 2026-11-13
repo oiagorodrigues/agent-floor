@@ -49,6 +49,9 @@ export interface HudActions {
   frameAll(): void;
   toggleTheme(): void;
   startDemo(): void;
+  toggleReplay(): void;
+  toggleLog(): void;
+  closeLog(): void;
 }
 
 /** Statuses that mean "this agent is on the clock right now". */
@@ -118,6 +121,10 @@ export class Hud {
   private empty = el('div', 'empty glass');
   private themeBtn: HTMLButtonElement;
   private busyBtn: HTMLButtonElement;
+  private replayBtn: HTMLButtonElement;
+  private logBtn: HTMLButtonElement;
+  private replaying = false;
+  private logOpen = false;
   private teamsKey = '';
   private cardKey = '';
   private state: WorldState | null = null;
@@ -147,6 +154,8 @@ export class Hud {
     const busyBtn = btn('users', 'Who is working (W)', () => this.toggleBusy());
     busyBtn.append(this.busyBadge);
     this.busyBtn = busyBtn;
+    this.replayBtn = btn('replay', 'Replay what happened (R)', () => actions.toggleReplay());
+    this.logBtn = btn('log', 'Office log (L)', () => actions.toggleLog());
     this.themeBtn = btn('moon', 'Switch theme (T)', () => actions.toggleTheme());
     btn('plug', 'Connect your agents', () => this.openSheet());
     const gh = el('a', 'icon-btn', icon('github')) as HTMLAnchorElement;
@@ -191,10 +200,26 @@ export class Hud {
     this.themeBtn.innerHTML = icon(dark ? 'sun' : 'moon');
   }
 
+  setReplay(on: boolean) {
+    if (this.replaying === on) return;
+    this.replaying = on;
+    this.replayBtn.classList.toggle('active', on);
+    this.replayBtn.setAttribute('aria-pressed', String(on));
+    this.setMode(this.mode);
+  }
+
+  /** The office log and "Who is working" share the left side, so only one is open at a time. */
+  setLogOpen(on: boolean) {
+    this.logOpen = on;
+    this.logBtn.classList.toggle('active', on);
+    this.logBtn.setAttribute('aria-pressed', String(on));
+    if (on) this.closeBusy();
+  }
+
   setMode(mode: ConnectionMode) {
     this.mode = mode;
-    const label = { live: 'Live', demo: 'Demo', connecting: 'Connecting', offline: 'Offline' }[mode];
-    this.modePill.className = `mode ${mode}`;
+    const label = this.replaying ? 'Replay' : { live: 'Live', demo: 'Demo', connecting: 'Connecting', offline: 'Offline' }[mode];
+    this.modePill.className = `mode ${this.replaying ? 'replay' : mode}`;
     this.modePill.innerHTML = `<span class="pulse" aria-hidden="true"></span>${label}`;
     this.root.classList.toggle('is-demo', mode === 'demo');
     this.updateEmpty();
@@ -261,7 +286,10 @@ export class Hud {
   private toggleBusy() {
     this.busyOpen = !this.busyOpen;
     this.busyKey = '';
-    if (this.busyOpen) this.renderBusy();
+    if (this.busyOpen) {
+      this.actions.closeLog();
+      this.renderBusy();
+    }
     this.busyPanel.classList.toggle('show', this.busyOpen);
     this.busyBtn.classList.toggle('active', this.busyOpen);
   }
@@ -562,10 +590,12 @@ export class Hud {
       if (e.key === 'Escape') {
         if (this.sheet.classList.contains('show')) this.closeSheet();
         else if (this.busyOpen) this.closeBusy();
+        else if (this.logOpen) this.actions.closeLog();
         else this.actions.select(null);
       } else if (e.key === 'f' || e.key === 'F') this.actions.frameAll();
       else if (e.key === 't' || e.key === 'T') this.actions.toggleTheme();
       else if (e.key === 'w' || e.key === 'W') this.toggleBusy();
+      else if (e.key === 'l' || e.key === 'L') this.actions.toggleLog();
       else if (e.key === ']' || e.key === '[') {
         const ids = Object.values(this.state?.agents || {})
           .sort((a, b) => (this.state!.teams[a.team]?.order ?? 0) - (this.state!.teams[b.team]?.order ?? 0) || a.joinedAt - b.joinedAt)

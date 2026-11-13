@@ -1,21 +1,54 @@
 import { applyEvent, createState, normalizeEvent, removeAgents, sweep } from '../../shared/protocol.js';
+import { Recording } from '../../shared/replay.js';
 import type { Effect, FloorEvent, InboundEvent, WorldState } from '../../shared/protocol';
+import type { History, LogEntry } from '../../shared/replay';
 
 export type ConnectionMode = 'connecting' | 'live' | 'demo' | 'offline';
 
+/** What the scene animates. `jump` means "the view moved in time: place everyone instantly". */
+export type ViewEffect = Effect | { kind: 'jump' };
+
 type Listener = () => void;
-type EffectListener = (effect: Effect) => void;
+type EffectListener = (effect: ViewEffect) => void;
+
+export interface ReplayState {
+  /** The moment the view shows, on the same clock as LogEntry.at. */
+  t: number;
+  playing: boolean;
+  speed: number;
+}
 
 /**
  * Single source of truth for the browser. The same reducer runs on the server,
  * so a snapshot plus the event stream reproduces the server state exactly.
+ * Every change is also recorded, which is what replay plays back.
  */
 class Store {
-  state: WorldState = createState();
   mode: ConnectionMode = 'connecting';
   selected: string | null = null;
+  replay: ReplayState | null = null;
+
+  private live: WorldState = createState();
+  private recording = new Recording(this.live, Date.now());
+  /** Latest `at` recorded, so entries stay in order when the server's clock runs ahead of this one. */
+  private lastAt = 0;
   private listeners = new Set<Listener>();
   private effectListeners = new Set<EffectListener>();
+
+  /** What the scene and HUD show: the live floor, or the replayed moment. */
+  get state(): WorldState {
+    return this.recording.view ?? this.live;
+  }
+
+  /** Earliest moment replay can show. */
+  get start() {
+    return this.recording.start;
+  }
+
+  /** The recorded changes, oldest first. */
+  get entries(): readonly LogEntry[] {
+    return this.recording.entries;
+  }
 
   subscribe(fn: Listener) {
     this.listeners.add(fn);
@@ -31,7 +64,7 @@ class Store {
     for (const fn of this.listeners) fn();
   }
 
-  private emitEffects(effects: Effect[]) {
+  private emitEffects(effects: ViewEffect[]) {
     for (const e of effects) for (const fn of this.effectListeners) fn(e);
   }
 
@@ -47,15 +80,21 @@ class Store {
     this.emit();
   }
 
-  replace(state: WorldState) {
-    this.state = state;
+  /** Start over from a snapshot. With `history`, replay and the log reach back to `history.baseAt`. */
+  replace(state: WorldState, history?: History) {
+    this.live = state;
+    this.recording = history ? Recording.from(history.base, history.baseAt, history.recent) : new Recording(state, Date.now());
+    this.lastAt = this.recording.entries.at(-1)?.at ?? this.recording.start;
+    this.replay = null;
     this.emitEffects([{ kind: 'reset' }]);
     this.emit();
   }
 
   /** Apply an event that the server already normalised, with the effects it computed. */
   applyRemote(event: FloorEvent, effects: Effect[]) {
-    applyEvent(this.state, event);
+    const { actor } = applyEvent(this.live, event);
+    this.record({ at: this.stamp(), event: structuredClone(event), actor });
+    if (this.replay) return this.emit();
     // State first so the scene has every character before effects animate them.
     this.emit();
     this.emitEffects(effects);
@@ -65,23 +104,101 @@ class Store {
   applyLocal(raw: InboundEvent) {
     const ev = normalizeEvent(raw);
     if (!ev) return;
-    const { effects } = applyEvent(this.state, ev);
+    const { effects, actor } = applyEvent(this.live, ev);
+    this.record({ at: this.stamp(), event: structuredClone(ev), actor });
+    if (this.replay) return this.emit();
     this.emit();
     this.emitEffects(effects);
   }
 
   remove(ids: string[]) {
-    const removed = removeAgents(this.state, ids);
-    if (this.selected && !this.state.agents[this.selected]) this.selected = null;
-    if (removed.length) this.emit();
+    const removed = removeAgents(this.live, ids);
+    if (!removed.length) return;
+    this.record({ at: this.stamp(), removed });
+    if (!this.replay && this.selected && !this.live.agents[this.selected]) this.selected = null;
+    this.emit();
   }
 
   sweepLocal() {
-    const removed = sweep(this.state);
-    if (removed.length) {
-      if (this.selected && removed.includes(this.selected)) this.selected = null;
-      this.emit();
+    const removed = sweep(this.live);
+    if (!removed.length) return;
+    this.record({ at: this.stamp(), removed });
+    if (!this.replay && this.selected && removed.includes(this.selected)) this.selected = null;
+    this.emit();
+  }
+
+  private stamp() {
+    this.lastAt = Math.max(Date.now(), this.lastAt);
+    return this.lastAt;
+  }
+
+  private record(entry: LogEntry) {
+    this.recording.record(entry);
+    if (this.replay && this.replay.t < this.recording.start) this.replay.t = this.recording.start;
+  }
+
+  // ---------------------------------------------------------------- replay
+
+  /** Go back to the start of the recording and play from there. */
+  startReplay(speed = 4) {
+    this.replay = { t: this.recording.start, playing: true, speed };
+    this.seek(this.recording.start);
+  }
+
+  /** Back to the live floor. */
+  stopReplay() {
+    if (!this.replay) return;
+    this.replay = null;
+    this.recording.close();
+    if (this.selected && !this.live.agents[this.selected]) this.selected = null;
+    this.emitEffects([{ kind: 'jump' }]);
+    this.emit();
+  }
+
+  setPlaying(playing: boolean) {
+    if (!this.replay || this.replay.playing === playing) return;
+    this.replay.playing = playing;
+    this.emit();
+  }
+
+  setSpeed(speed: number) {
+    if (!this.replay) return;
+    this.replay.speed = speed;
+    this.emit();
+  }
+
+  /** Jump to a moment: rebuild it from the start of the recording and place everyone instantly. */
+  seek(t: number) {
+    if (!this.replay) return;
+    if (t >= Date.now()) return this.stopReplay();
+    this.replay.t = this.recording.seek(t);
+    this.dropMissingSelection();
+    this.emitEffects([{ kind: 'jump' }]);
+    this.emit();
+  }
+
+  /**
+   * Play forward to `t`, animating what happened on the way (paper planes, arrivals).
+   * Returns false when nothing on the floor changed, so the caller only has to move the playhead.
+   */
+  advance(t: number): boolean {
+    if (!this.replay) return false;
+    if (t >= Date.now()) {
+      this.stopReplay();
+      return true;
     }
+    this.replay.t = t;
+    const { applied, effects } = this.recording.advance(t);
+    if (!applied) return false;
+    this.dropMissingSelection();
+    this.emit();
+    this.emitEffects(effects);
+    return true;
+  }
+
+  private dropMissingSelection() {
+    const view = this.recording.view;
+    if (view && this.selected && !view.agents[this.selected]) this.selected = null;
   }
 }
 

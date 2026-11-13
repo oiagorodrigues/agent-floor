@@ -18,8 +18,11 @@ Open http://localhost:5173. Add `?demo` to run the demo inside the browser witho
 | Path | What lives there |
 | --- | --- |
 | `shared/protocol.js` | Event validation and the reducer. Runs on the server and in the browser. Change it with care and add tests. |
+| `shared/replay.js` | The recording replay plays back: folds old changes into a starting state and rebuilds any moment. |
+| `shared/office-log.js` | Turns floor events into the office log's sentences. |
 | `shared/demo-script.js` | The endless fake office used by `agent-floor demo` and the hosted demo. |
 | `server/index.mjs` | HTTP + SSE. No dependencies. |
+| `server/recent.mjs` | The last 30 minutes (a base state plus recent changes), bounded and in memory, sent with each snapshot. |
 | `bin/agent-floor.mjs` | CLI: `start`, `setup`, `hook`, `emit`, `demo`, `stop`, `quiet`. |
 | `adapters/` | Native hook payloads to floor events. Pure functions. |
 | `src/world/layout.ts` | The floor plan: lobby, corridor, office wings, amenities, desks and walking routes. Seats and wings are stable once assigned. |
@@ -32,7 +35,7 @@ Open http://localhost:5173. Add `?demo` to run the demo inside the browser witho
 | `src/world/TeamRoom.ts` | One team's office: carpet, rug, furniture, whiteboard, door signs. |
 | `src/world/Courier.ts` | Paper planes and landing ripples. |
 | `src/world/World.ts` | Renderer, lights, camera rig, picking, and syncing the scene with state. |
-| `src/ui/` | Name tags, bubbles, the agent card, the connect sheet. |
+| `src/ui/` | Name tags, bubbles, the agent card, the connect sheet, the replay timeline and the office log. |
 
 ## Design rules
 
