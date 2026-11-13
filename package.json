@@ -12,6 +12,7 @@
     "bin",
     "desktop",
     "dist",
+    "extensions",
     "lib",
     "server",
     "shared"

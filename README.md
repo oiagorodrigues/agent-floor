@@ -4,7 +4,7 @@ A live 3D office for your coding agents.
 
 Every agent gets a character and a desk inside one office building. Each project or team gets its own glass-walled office block off the main corridor, next to a lobby, kitchen, meeting room and lounge. You can watch agents walk in the front door, find their desk, type, think, raise a hand when they need you, and throw paper planes at each other when they talk. Click anyone to see exactly what they are doing.
 
-Works with **Claude Code**, **Codex**, **Cursor**, **Hermes Agent**, **opencode**, and anything else that can send an HTTP request.
+Works with **Claude Code**, **Codex**, **Cursor**, **Hermes Agent**, **opencode**, **pi**, and anything else that can send an HTTP request.
 
 **[Try the live demo](https://develop212.github.io/agent-floor/)** (runs in your browser, no install).
 
@@ -120,6 +120,15 @@ agent-floor setup opencode --project   # .opencode/plugins/agent-floor.js in thi
 
 Installs a small plugin file that loads `adapters/opencode-plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup.
 
+### pi
+
+```bash
+agent-floor setup pi --write         # adds the extension to ~/.pi/agent/settings.json
+agent-floor setup pi --project       # .pi/settings.json in this repo
+```
+
+pi loads `extensions/agent-floor-pi.js` from this install into its own process. The extension posts tool activity, waiting and idle states to the floor in the background, so a floor that is down never slows pi. Each pi session gets its own desk in a room named after the project folder.
+
 ### Anything else
 
 Post JSON to `http://localhost:4317/events` with the token from `~/.agent-floor/token`:
@@ -148,7 +157,7 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 | `AGENT_FLOOR_HOST` | `127.0.0.1` | server |
 | `AGENT_FLOOR_URL` | `http://127.0.0.1:4317` | hooks, `emit`, `demo` |
 | `AGENT_FLOOR_TEAM` | project folder name | hooks: put this session in a named room |
-| `AGENT_FLOOR_NAME` | `Claude`, `Codex`, `Cursor`, `Hermes`, `OpenCode` | hooks: the lead's display name |
+| `AGENT_FLOOR_NAME` | `Claude`, `Codex`, `Cursor`, `Hermes`, `OpenCode`, `Pi` | hooks: the lead's display name |
 | `AGENT_FLOOR_MACHINE` | unset | hooks: this computer's name, shown as a badge on its agents' name tags and as "on work-laptop" on the agent card |
 | `AGENT_FLOOR_AUTOLAUNCH` | `1` | set to `0` so hooks never open the app |
 | `AGENT_FLOOR_SHARE_PROMPTS` | `0` | set to `1` to show your prompts, replies and agent thoughts on the floor |
@@ -165,8 +174,8 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 - The server sends no CORS headers, so pages on other origins, other localhost ports included, cannot read the stream or post to it.
 - Every `POST` needs `Authorization: Bearer <token>`. The token is created in `~/.agent-floor/token` with owner-only permissions, so other users on the machine cannot post events.
 - Prompts, replies and agent thoughts stay off the floor unless you set `AGENT_FLOOR_SHARE_PROMPTS=1`. Tool activity ("Running npm test", "Editing cart.ts") is still shown.
-- The server masks secrets in every event, whether it comes from a hook, `agent-floor emit` or your own POST, before it reaches the floor. It catches tokens with a known prefix (`ghp_`, `gho_`, `github_pat_`, `sk-`, `sk-ant-`, `xoxb-`, `xoxp-`, `AKIA`, JWTs), `Authorization` headers, `curl -u user:pass`, passwords in URLs, and values labelled `password`, `passwd`, `token`, `secret`, `api_key`, `apikey` or `access_key`. The secret becomes `[redacted]` and its label stays, so `GITHUB_TOKEN=ghp_…` shows as `GITHUB_TOKEN=[redacted]`. Masking matches patterns, so a secret in an unknown format, or an unquoted `password: word` without a digit, can still show.
-- Hooks time out after 1.2 seconds, swallow every error and always exit 0. If the floor is down, your agents never notice.
+- The server masks secrets in every event, whether it comes from a hook, `agent-floor emit` or your own POST, before it reaches the floor. It catches tokens with a known prefix (`ghp_`, `gho_`, `github_pat_`, `sk-`, `sk-ant-`, `xoxb-`, `xoxp-`, `AKIA`, JWTs), `Authorization` headers, `curl -u user:pass`, passwords in URLs, and values labelled `password`, `passwd`, `token`, `secret`, `api_key`, `apikey` or `access_key`. The secret becomes `[redacted]` and its label stays, so `GITHUB_TOKEN=ghp_â¦` shows as `GITHUB_TOKEN=[redacted]`. Masking matches patterns, so a secret in an unknown format, or an unquoted `password: word` without a digit, can still show.
+- Hooks time out after 1.2 seconds, swallow every error and always exit 0. The pi extension never makes pi wait for the floor, gives each request 0.8 seconds and swallows every error. If the floor is down, your agents never notice.
 - Nothing is stored on disk and nothing is sent anywhere else. Activity text is clipped to 280 characters.
 
 ## The desktop app
@@ -183,7 +192,7 @@ Static furniture is batched into a few meshes per room with colours baked into v
 ## How it works
 
 ```
-Claude Code / Codex / Cursor hooks ──┐
+Claude Code / Codex / Cursor / pi ───┐
 agent-floor emit, curl, your code ───┼──► POST /events ──► reducer ──► GET /stream (SSE) ──► browser
                                      │                       │                                │
                                      └─ adapters/*.mjs       └─ shared/protocol.js ◄──────────┘
