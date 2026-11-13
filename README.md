@@ -4,7 +4,7 @@ A live 3D office for your coding agents.
 
 Every agent gets a character and a desk inside one office building. Each project or team gets its own glass-walled office block off the main corridor, next to a lobby, kitchen, meeting room and lounge. You can watch agents walk in the front door, find their desk, type, think, raise a hand when they need you, and throw paper planes at each other when they talk. Click anyone to see exactly what they are doing.
 
-Works with **Claude Code**, **Codex**, **Cursor**, and anything else that can send an HTTP request.
+Works with **Claude Code**, **Codex**, **Cursor**, **Hermes Agent**, and anything else that can send an HTTP request.
 
 **[Try the live demo](https://develop212.github.io/agent-floor/)** (runs in your browser, no install).
 
@@ -101,6 +101,15 @@ agent-floor setup cursor --project   # .cursor/hooks.json in this repo
 ```
 
 Only observing hooks are installed. Agent Floor never answers a permission prompt for you.
+
+### Hermes Agent
+
+```bash
+agent-floor setup hermes             # prints a hooks: block for ~/.hermes/config.yaml
+agent-floor setup hermes --write     # appends it, if the file has no hooks: section yet
+```
+
+Uses [Hermes Agent](https://github.com/NousResearch/hermes-agent) shell hooks: `on_session_start`, `pre_llm_call`, `pre_tool_call`, `post_tool_call`, `on_session_end` and `on_session_finalize`. `--write` keeps a timestamped backup, and if your config already has a `hooks:` section it changes nothing and prints the entries for you to merge by hand. Hermes asks you to approve each new hook the next time `hermes chat` starts; `hermes hooks list` shows which ones are approved. Set `HERMES_HOME` to set up another profile.
 
 ### Anything else
 
