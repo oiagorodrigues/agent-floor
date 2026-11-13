@@ -17,7 +17,7 @@ const run = promisify(execFile);
 const SESSION = 'ses_8e1f2a3b4c5dK9xQwErTyUiOpA';
 const opts = { directory: '/w/api', sharePrompts: false };
 
-// Payloads follow the examples and hook types in https://opencode.ai/docs/v1/plugins/.
+// Payloads follow the examples and hook types in https://github.com/anomalyco/opencode/blob/85a043926abf98ca967a24b7c12c0aa6b7d81cd3/services/site/src/docs/v1/content/plugins.mdx.
 test('opencode 1 tool hooks become tool activity on the session desk', () => {
   const [before] = fromOpencodeV1('tool.execute.before', { tool: 'read', sessionID: SESSION, callID: 'call_1' }, { args: { filePath: '/w/api/.env' } }, opts);
   assert.deepEqual(before, {
@@ -80,6 +80,20 @@ test('opencode 2 tool hooks, prompt hook and bus events', () => {
   assert.equal(idle.status, 'idle');
   const [asked] = fromOpencodeV2('event', { id: 'evt_2', type: 'permission.asked', created: 1, data: { id: 'per_1', sessionID: SESSION, permission: 'edit' } }, opts);
   assert.equal(asked.status, 'waiting');
+  const [failedTurn] = fromOpencodeV2(
+    'event',
+    { id: 'evt_3', type: 'session.execution.failed', created: 1, data: { sessionID: SESSION, error: { type: 'unknown', message: 'boom' } } },
+    opts,
+  );
+  assert.equal(failedTurn.status, 'error');
+  const [deleted] = fromOpencodeV2('event', { id: 'evt_4', type: 'session.deleted', created: 1, data: { sessionID: SESSION } }, opts);
+  assert.equal(deleted.type, 'leave');
+});
+
+test('opencode 2 events from another project are left to that project plugin', () => {
+  const idle = (directory) => ({ id: 'evt_1', type: 'session.status', created: 1, location: { directory }, data: { sessionID: SESSION, status: { type: 'idle' } } });
+  assert.deepEqual(fromOpencodeV2('event', idle('/w/web'), opts), []);
+  assert.equal(fromOpencodeV2('event', idle('/w/api'), opts)[0].team, 'api');
 });
 
 test('prompts stay off the floor unless sharing is on', () => {
@@ -152,6 +166,24 @@ test('the opencode 2 setup registers observing hooks and the event stream', asyn
   assert.equal(subscriptions[0].signal.aborted, false);
   cleanup();
   assert.equal(subscriptions[0].signal.aborted, true);
+});
+
+test('the plugin sends one request at a time, in order', async () => {
+  const requests = [];
+  let release;
+  const post = (events) => {
+    requests.push(events.map((e) => e.activity));
+    return new Promise((resolve) => (release = resolve));
+  };
+  const hooks = await createPlugin({ post }).server({ directory: '/w/api' });
+  const call = (tool, args) => hooks['tool.execute.before']({ tool, sessionID: SESSION, callID: tool }, { args });
+  await call('bash', { command: 'npm test' });
+  await call('read', { filePath: '/w/api/a.ts' });
+  await hooks.event({ event: { type: 'session.idle', properties: { sessionID: SESSION } } });
+  assert.deepEqual(requests, [['Running npm test']], 'later events wait for the request in flight');
+  release();
+  await new Promise(setImmediate);
+  assert.deepEqual(requests, [['Running npm test'], ['Reading a.ts', 'Waiting for you']]);
 });
 
 async function tempHome() {

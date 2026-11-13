@@ -118,7 +118,7 @@ agent-floor setup opencode --write     # ~/.config/opencode/plugins/agent-floor.
 agent-floor setup opencode --project   # .opencode/plugins/agent-floor.js in this repo
 ```
 
-Installs a small plugin file that loads `adapters/opencode-plugin.mjs` from this folder, so it works with OpenCode 1 and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup.
+Installs a small plugin file that loads `adapters/opencode-plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup.
 
 ### Anything else
 

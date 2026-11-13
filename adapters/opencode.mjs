@@ -2,8 +2,9 @@
 //
 // The plugin in adapters/opencode-plugin.mjs runs inside opencode and hands
 // every payload to these pure functions. OpenCode 1 passes (input, output) per
-// hook (https://opencode.ai/docs/v1/plugins/); OpenCode 2 passes one event
-// object per hook (https://opencode.ai/docs/build/plugins/server/).
+// hook; OpenCode 2 passes one event object per hook.
+// OpenCode 1: https://github.com/anomalyco/opencode/blob/85a043926abf98ca967a24b7c12c0aa6b7d81cd3/services/site/src/docs/v1/content/plugins.mdx
+// OpenCode 2: https://opencode.ai/docs/build/plugins/server/
 import { describeTool, sharesConversation, shortId, teamFromCwd } from './common.mjs';
 
 // opencode's built-in tool ids, named the way describeTool knows them.
@@ -66,12 +67,13 @@ function eventsFor(change, { directory, sharePrompts = sharesConversation() } = 
   }
 }
 
-/** Bus event types the plugin subscribes to. */
-export const OPENCODE_EVENTS = ['session.status', 'session.idle', 'session.error', 'permission.asked', 'session.deleted'];
+/** Event types the plugin subscribes to on OpenCode 2. OpenCode 1 sends every event to the `event` hook. */
+export const OPENCODE2_EVENTS = ['session.status', 'session.idle', 'session.execution.failed', 'permission.asked', 'session.deleted'];
 
 /**
  * OpenCode 1 puts an event's fields under `properties`, OpenCode 2 under `data`.
  * `session.idle` is deprecated in OpenCode 2 in favour of `session.status`; both still arrive.
+ * A failed turn is `session.error` on OpenCode 1 and `session.execution.failed` on OpenCode 2.
  */
 function busChange(event) {
   const props = event?.properties ?? event?.data ?? {};
@@ -81,6 +83,7 @@ function busChange(event) {
     case 'session.idle':
       return { kind: 'idle', sessionID: props.sessionID };
     case 'session.error':
+    case 'session.execution.failed':
       return { kind: 'error', sessionID: props.sessionID };
     case 'permission.asked':
       return { kind: 'permission', sessionID: props.sessionID };
@@ -137,6 +140,10 @@ export function fromOpencodeV2(hook, event, opts) {
     case 'tool.execute.after':
       return eventsFor({ kind: 'tool.end', sessionID: event.sessionID, tool: event.tool, args: event.input }, opts);
     case 'event':
+      // The stream carries every location the server runs. Each location's copy
+      // of the plugin reports its own, so no session is posted twice or lands in
+      // another project's room.
+      if (event.location?.directory && opts?.directory && event.location.directory !== opts.directory) return [];
       return eventsFor(busChange(event), opts);
     default:
       return [];

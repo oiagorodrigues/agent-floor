@@ -109,17 +109,17 @@ import { createPlugin } from "file:///absolute/path/agent-floor/adapters/opencod
 export default createPlugin();
 ```
 
-The plugin runs inside opencode, so it posts to the floor itself, with the token from `~/.agent-floor/token` (or `$AGENT_FLOOR_HOME/token`) and a 1.2 second timeout. Nothing it does is awaited by opencode and every failure is dropped. It never opens the app: start the floor first, or let a Claude Code or Cursor hook open it.
+The plugin runs inside opencode, so it posts to the floor itself, with the token from `~/.agent-floor/token` (or `$AGENT_FLOOR_HOME/token`) and a 1.2 second timeout. It sends one request at a time so events arrive in order, and each copy of the plugin on OpenCode 2 only reports events from its own project. Nothing it does is awaited by opencode and every failure is dropped. It never opens the app: start the floor first, or let a Claude Code or Cursor hook open it.
 
 One default export serves both plugin APIs, as [opencode's migration guide](https://opencode.ai/docs/build/plugins/migrate-v1/) describes: OpenCode 2 reads `id` and `setup()`, OpenCode 1 (1.18.29 and newer) calls `server()`. The id is `agent-floor`, so OpenCode 2 loads only one copy if you install it both globally and in a project. OpenCode 1 loads both and posts every event twice.
 
-| OpenCode 1 ([plugins](https://opencode.ai/docs/v1/plugins/)) | OpenCode 2 ([server plugins](https://opencode.ai/docs/build/plugins/server/)) | On the floor |
+| OpenCode 1 ([plugins](https://github.com/anomalyco/opencode/blob/85a043926abf98ca967a24b7c12c0aa6b7d81cd3/services/site/src/docs/v1/content/plugins.mdx)) | OpenCode 2 ([server plugins](https://opencode.ai/docs/build/plugins/server/)) | On the floor |
 | --- | --- | --- |
 | `chat.message` | `ctx.session.hook("prompt")` | Thinking. Your prompt is shown only with `AGENT_FLOOR_SHARE_PROMPTS=1`. |
 | `tool.execute.before` | `ctx.tool.hook("execute.before")` | Working. The monitor shows the tool and a readable summary ("Running npm test", "Editing cart.ts"). |
 | `tool.execute.after` | `ctx.tool.hook("execute.after")` | Thinking, "Done: ...". |
 | `session.status` idle, `session.idle` | same, from `ctx.event.subscribe()` | Idle. |
-| `session.error` | same | Error. |
+| `session.error` | `session.execution.failed` | Error. |
 | `permission.asked` | same | Waiting: the lead waves for you. |
 | `session.deleted` | same | The lead walks out. |
 
