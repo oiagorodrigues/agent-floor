@@ -90,3 +90,39 @@ test('no CORS headers, even for other localhost origins', () =>
     });
     assert.equal(preflight.headers.get('access-control-allow-origin'), null);
   }));
+
+test('shutdown needs JSON and the token, then closes the server', { timeout: 5000 }, async () => {
+  let isShutDown = false;
+  let shutDown;
+  const shutdown = new Promise((r) => (shutDown = r));
+  const onShutdown = () => {
+    isShutDown = true;
+    shutDown();
+  };
+  const floor = await startServer({ port: 0, log: () => {}, token: TOKEN, onShutdown });
+  const base = `http://127.0.0.1:${floor.server.address().port}`;
+  try {
+    const refused = [
+      [{ 'Content-Type': 'application/json' }, 401],
+      [{ 'Content-Type': 'application/json', Authorization: 'Bearer wrong' }, 401],
+      [{ 'Content-Type': 'text/plain', ...auth }, 415],
+    ];
+    for (const [headers, status] of refused) {
+      const res = await fetch(`${base}/shutdown`, { method: 'POST', headers, body: '{}' });
+      assert.equal(res.status, status);
+    }
+    assert.equal((await fetch(`${base}/health`)).status, 200, 'still up after refused requests');
+    assert.equal(isShutDown, false);
+
+    const stream = await fetch(`${base}/stream`);
+    const res = await fetch(`${base}/shutdown`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth }, body: '{}' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true });
+    await stream.text(); // the server ends open streams as it closes
+    await shutdown;
+    assert.equal(floor.server.listening, false);
+    await assert.rejects(fetch(`${base}/health`));
+  } finally {
+    await floor.close();
+  }
+});

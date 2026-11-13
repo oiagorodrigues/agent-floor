@@ -4,6 +4,7 @@
 //   GET  /stream        Server-Sent Events: a `snapshot`, then `event` + `effects`
 //   GET  /state         current world as JSON
 //   POST /reset         clear the floor
+//   POST /shutdown      close the server, then call onShutdown (agent-floor stop)
 //   GET  /*             the built web app (dist/)
 //
 // POSTs need `Authorization: Bearer <token>` (the token lives in ~/.agent-floor/token).
@@ -39,6 +40,7 @@ export function startServer({
   log = console.log,
   token = localState.readToken(),
   randomNames = process.env.AGENT_FLOOR_RANDOM_NAMES !== '0',
+  onShutdown,
 } = {}) {
   const expected = Buffer.from(`Bearer ${token}`);
   const state = createState();
@@ -124,6 +126,17 @@ export function startServer({
   }
 
   const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  let closing = null;
+
+  function close() {
+    closing ??= new Promise((r) => {
+      clearInterval(sweeper);
+      clearInterval(heartbeat);
+      for (const res of clients) res.end();
+      server.close(() => r());
+    });
+    return closing;
+  }
 
   const server = createServer(async (req, res) => {
     // DNS-rebinding guard: when bound to loopback, only answer loopback hostnames.
@@ -166,6 +179,16 @@ export function startServer({
         ingest({ type: 'reset' });
         return json(res, 200, { ok: true });
       }
+      if (pathname === '/shutdown' && req.method === 'POST') {
+        // Without this the caller's keep-alive socket holds server.close() open for seconds.
+        res.setHeader('Connection', 'close');
+        json(res, 200, { ok: true });
+        close().then(() => {
+          log('Agent Floor stopped.');
+          onShutdown?.();
+        });
+        return;
+      }
       if (req.method === 'GET') return serveStatic(req, res);
       return json(res, 404, { error: 'Not found' });
     } catch (err) {
@@ -181,12 +204,7 @@ export function startServer({
         server,
         state,
         ingest,
-        close() {
-          clearInterval(sweeper);
-          clearInterval(heartbeat);
-          for (const res of clients) res.end();
-          return new Promise((r) => server.close(r));
-        },
+        close,
       });
     });
   });
