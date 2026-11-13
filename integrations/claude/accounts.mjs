@@ -1,6 +1,6 @@
 // Which Claude Code config dir (account) a session belongs to.
 //
-// `settings` is the "claude" section of ~/.agent-floor/config.json:
+// `settings` is agents.claude in ~/.agent-floor/config.json:
 //   { "defaultConfigDir": "~/.claude",
 //     "byPath": [{ "path": "~/Workspaces/acme", "configDir": "~/.claude-acme" }] }
 import { basename, resolve, sep } from 'node:path';
@@ -10,7 +10,7 @@ function claudeSettings(settings, home) {
   const claude = settings ?? {};
   const byPath = claude.byPath ?? [];
   if (!Array.isArray(byPath) || byPath.some((r) => typeof r?.path !== 'string' || typeof r?.configDir !== 'string')) {
-    throw new Error('config.json: claude.byPath must be a list of { "path": string, "configDir": string }');
+    throw new Error('config.json: agents.claude.byPath must be a list of { "path": string, "configDir": string }');
   }
   return {
     defaultDir: expandHome(claude.defaultConfigDir ?? '~/.claude', home),

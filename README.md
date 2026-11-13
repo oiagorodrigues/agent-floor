@@ -66,14 +66,16 @@ If you use more than one Claude config dir (`CLAUDE_CONFIG_DIR`), list them in `
 
 ```json
 {
-  "claude": {
-    "defaultConfigDir": "~/.claude",
-    "byPath": [{ "path": "~/Workspaces/work", "configDir": "~/.claude-work" }]
+  "agents": {
+    "claude": {
+      "defaultConfigDir": "~/.claude",
+      "byPath": [{ "path": "~/Workspaces/work", "configDir": "~/.claude-work" }]
+    }
   }
 }
 ```
 
-The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
+Settings for the whole floor, such as `"app"`, sit at the top of the file, and each agent's settings go under `"agents"`. The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
 
 #### Headless runs (`claude -p`)
 
@@ -215,7 +217,7 @@ Group several repos into one room by giving them the same `AGENT_FLOOR_TEAM`.
 - Each `roster` entry is a desk that is always there, idle with its "job · model" line. When the lead spawns a subagent of that `type`, that desk lights up instead of a new character walking in, and it goes back to idle when the subagent reports back.
 - When a Write or Edit saves a file to `<inbox>/<room slug>/...`, a paper plane flies to the `inboxTo` desk. `decisions` works the same way, and `{slug}` stands for the room the file is filed under.
 - After you edit the file, reload it with `curl -X POST localhost:4317/reload -H 'content-type: application/json' -H "authorization: Bearer $(cat ~/.agent-floor/token)"`. If the file is invalid, the answer names the bad field and the floor keeps its current rooms. Hooks treat an invalid file as no file.
-- Rooms are kept apart from `config.json`, so a mistake in one file never breaks the other. A broken `config.json` stops account labels, and a broken `rooms.json` only stops rooms.
+- Rooms are kept apart from `config.json`, so a mistake in one file never breaks the other. A broken `config.json` stops setup, startup and account labels, and a broken `rooms.json` only stops rooms.
 - The floor saves the roster desks to `~/.agent-floor/state-<port>.json` and brings them back idle on the next start, even when the rooms file is invalid at that moment.
 
 The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a browser tab while it is on screen. A browser tab stops rendering when you close it or switch away, and the server keeps running in the background. Stop it with `agent-floor stop`.

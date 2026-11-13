@@ -15,6 +15,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { ConfigError, agentSection, loadConfig } from '../lib/config.mjs';
 import { loadRooms, roomsPath } from '../lib/rooms.mjs';
 import { AGENTS, HOOK_AGENTS, INTEGRATIONS, setupForms } from '../integrations/index.mjs';
 import { SetupError, UsageError } from '../integrations/cli.mjs';
@@ -29,6 +30,8 @@ const localState = require('../desktop/state.cjs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const [, , cmd = 'app', ...rest] = process.argv;
+// setup and startup read it first, so a config.json in an old shape stops them with the fix.
+const readConfig = () => loadConfig(AGENTS);
 
 function flags(args) {
   const out = { _: [] };
@@ -125,7 +128,7 @@ const APP_MODES = ['desktop', 'browser'];
 
 /** "desktop" (default) or "browser", from AGENT_FLOOR_APP or "app" in ~/.agent-floor/config.json. */
 function appMode() {
-  const mode = process.env.AGENT_FLOOR_APP || localState.readConfig().app || 'desktop';
+  const mode = process.env.AGENT_FLOOR_APP || readConfig().app || 'desktop';
   if (!APP_MODES.includes(mode)) throw new Error(`Unknown app mode "${mode}". Use ${APP_MODES.join(' or ')}.`);
   return mode;
 }
@@ -170,6 +173,7 @@ async function openApp({ fromHook = false, browser = appMode() === 'browser' } =
 
 async function app(args) {
   const f = flags(args);
+  readConfig();
   const how = await openApp(f.browser ? { browser: true } : {});
   console.log(
     how === 'desktop'
@@ -194,8 +198,7 @@ function hookRooms() {
   }
 }
 
-/** The `name` section of ~/.agent-floor/config.json. */
-const agentConfig = (name) => () => localState.readConfig()?.[name] ?? {};
+const agentConfig = (name) => () => agentSection(readConfig(), name);
 
 async function hook(kind) {
   let response = '';
@@ -263,6 +266,7 @@ async function setup(args) {
     console.log(SETUP_USAGE);
     process.exit(1);
   }
+  readConfig();
   try {
     await INTEGRATIONS[kind].setup({ flags: f, self: SELF, hookCommand, config: agentConfig(kind) });
   } catch (err) {
@@ -276,6 +280,7 @@ async function setup(args) {
 // ---------------------------------------------------------------- start
 async function start(args) {
   const f = flags(args);
+  readConfig();
   const { startServer } = await import('../server/index.mjs');
   const port = Number(f.port) || undefined;
   const host = f.host || undefined;
@@ -373,10 +378,14 @@ ${setupForms()
   agent-floor hook <${HOOK_AGENTS.join('|')}>  (called by agent hooks)
 
 Environment: AGENT_FLOOR_URL, AGENT_FLOOR_PORT, AGENT_FLOOR_TEAM, AGENT_FLOOR_NAME,\n             AGENT_FLOOR_AUTOLAUNCH=0 (hooks never open the app)`);
-} else if (commands[cmd]) {
-  await commands[cmd](rest);
-} else if (cmd.startsWith('--')) {
-  await start([cmd, ...rest]);
+} else if (commands[cmd] || cmd.startsWith('--')) {
+  try {
+    await (commands[cmd] ? commands[cmd](rest) : start([cmd, ...rest]));
+  } catch (err) {
+    if (!(err instanceof ConfigError)) throw err;
+    console.error(err.message);
+    process.exit(1);
+  }
 } else {
   console.error(`Unknown command "${cmd}". Try agent-floor --help`);
   process.exit(1);

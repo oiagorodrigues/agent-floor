@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AGENTS, HOOK_AGENTS, INTEGRATIONS, setupForms } from '../integrations/index.mjs';
+import { ConfigError, agentSection, checkConfig } from '../lib/config.mjs';
 import { startServer } from '../server/index.mjs';
 
 const CLI = resolve(fileURLToPath(import.meta.url), '../../bin/agent-floor.mjs');
@@ -106,7 +107,7 @@ test('setup codex prints the notify line for this install', async () => {
 
 test('setup claude prints, then writes hooks into the default and every mapped config dir', async () => {
   const { home, floorHome, env } = await tempHome();
-  await writeConfig(floorHome, { claude: { byPath: [{ path: '~/work', configDir: '~/.claude-work' }] } });
+  await writeConfig(floorHome, { agents: { claude: { byPath: [{ path: '~/work', configDir: '~/.claude-work' }] } } });
   const dirs = [join(home, '.claude'), join(home, '.claude-work')];
 
   const printed = await cli(['setup', 'claude'], { env });
@@ -158,7 +159,7 @@ async function floor(floorHome) {
 
 test('hook claude posts the event with the account of the folder rule, prints nothing and exits 0', async () => {
   const { home, floorHome, env } = await tempHome();
-  await writeConfig(floorHome, { claude: { byPath: [{ path: '~/work', configDir: '~/.claude-work' }] } });
+  await writeConfig(floorHome, { agents: { claude: { byPath: [{ path: '~/work', configDir: '~/.claude-work' }] } } });
   const f = await floor(floorHome);
   const hookEnv = { ...env, AGENT_FLOOR_URL: f.url };
   try {
@@ -179,7 +180,7 @@ test('hook claude posts the event with the account of the folder rule, prints no
 
 test('hook claude stays silent and exits 0 when config.json is malformed', async () => {
   const { home, floorHome, env } = await tempHome();
-  await writeConfig(floorHome, { claude: { byPath: 'nope' } });
+  await writeConfig(floorHome, { agents: { claude: { byPath: 'nope' } } });
   const f = await floor(floorHome);
   try {
     const input = JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'abc123', cwd: home });
@@ -226,4 +227,54 @@ test('hook with an unknown or missing agent does nothing and exits 0', async () 
   const { env } = await tempHome();
   assert.deepEqual(await cli(['hook', 'gemini'], { env, input: '{}' }), { code: 0, stdout: '', stderr: '' });
   assert.deepEqual(await cli(['hook'], { env, input: '{}' }), { code: 0, stdout: '', stderr: '' });
+});
+
+// The shape before "agents": agent sections sat at the top of the file.
+const OLD_CONFIG = { app: 'browser', claude: { defaultConfigDir: '~/.claude', byPath: [{ path: '~/work', configDir: '~/.claude-work' }] } };
+const MOVED_CONFIG = { app: 'browser', agents: { claude: OLD_CONFIG.claude } };
+
+test('config.json keeps global keys at the top and each agent under "agents"', () => {
+  const config = { app: 'browser', agents: { claude: { defaultConfigDir: '~/.claude-main' } } };
+  assert.equal(checkConfig(config, AGENTS, '/f/config.json'), config);
+  assert.deepEqual(agentSection(config, 'claude'), { defaultConfigDir: '~/.claude-main' });
+  assert.deepEqual(agentSection(config, 'cursor'), {});
+  assert.deepEqual(agentSection(checkConfig({}, AGENTS), 'claude'), {});
+  assert.throws(() => checkConfig({ agents: [] }, AGENTS, '/f/config.json'), (err) => err instanceof ConfigError && /"agents" must be an object/.test(err.message));
+});
+
+test('an agent section at the top level is refused with the file it should become', () => {
+  assert.throws(
+    () => checkConfig(OLD_CONFIG, AGENTS, '/f/config.json'),
+    (err) =>
+      err instanceof ConfigError &&
+      err.message === `/f/config.json: agent settings now live under "agents". Move "claude" there, so the file reads:\n\n${JSON.stringify(MOVED_CONFIG, null, 2)}`,
+  );
+  assert.throws(
+    () => checkConfig({ agents: { pi: {} }, claude: {}, cursor: {} }, AGENTS, '/f/config.json'),
+    (err) => err.message.includes('Move "claude" and "cursor" there') && err.message.endsWith(JSON.stringify({ agents: { pi: {}, claude: {}, cursor: {} } }, null, 2)),
+  );
+});
+
+test('setup and start stop on the old config shape and say how to move it', async () => {
+  const { home, floorHome, env } = await tempHome();
+  await writeConfig(floorHome, OLD_CONFIG);
+  const expected = `${join(floorHome, 'config.json')}: agent settings now live under "agents". Move "claude" there, so the file reads:\n\n${JSON.stringify(MOVED_CONFIG, null, 2)}\n`;
+  for (const args of [['setup', 'claude', '--write'], ['setup', 'cursor', '--write'], ['start', '--port', '0']]) {
+    assert.deepEqual(await cli(args, { env, cwd: home }), { code: 1, stdout: '', stderr: expected }, args.join(' '));
+  }
+  assert.deepEqual(await readdir(home), ['.agent-floor'], 'nothing was written');
+  assert.deepEqual(JSON.parse(await readFile(join(floorHome, 'config.json'), 'utf8')), OLD_CONFIG);
+});
+
+test('hook claude stays silent and exits 0 on the old config shape', async () => {
+  const { home, floorHome, env } = await tempHome();
+  await writeConfig(floorHome, OLD_CONFIG);
+  const f = await floor(floorHome);
+  try {
+    const input = JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'abc123', cwd: join(home, 'work') });
+    assert.deepEqual(await cli(['hook', 'claude'], { env: { ...env, AGENT_FLOOR_URL: f.url }, input }), { code: 0, stdout: '', stderr: '' });
+    assert.deepEqual(await f.agents(), []);
+  } finally {
+    await f.close();
+  }
 });
