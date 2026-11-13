@@ -24,7 +24,8 @@ Open http://localhost:5173. Add `?demo` to run the demo inside the browser witho
 | `server/index.mjs` | HTTP + SSE. No dependencies. |
 | `server/recent.mjs` | The last 30 minutes (a base state plus recent changes), bounded and in memory, sent with each snapshot. |
 | `bin/agent-floor.mjs` | CLI: `start`, `setup`, `hook`, `emit`, `demo`, `stop`, `quiet`. |
-| `adapters/` | Native hook payloads to floor events. Pure functions. |
+| `integrations/<tool>/` | One tool each: `adapter.mjs` (native hook payloads to floor events, pure functions), `index.mjs` (its `setup` and `hook` commands) and any plugin or extension the tool loads. |
+| `integrations/index.mjs` | The registry the CLI reads for `setup`, `hook`, the usage text and the help. |
 | `src/world/layout.ts` | The floor plan: lobby, corridor, office wings, amenities, desks and walking routes. Seats and wings are stable once assigned. |
 | `src/world/Building.ts` | The shell and shared spaces: walls, windows, doors, lobby, kitchen, meeting room, lounge, garden. |
 | `src/world/props.ts` | The furniture catalogue. Each prop is a function that describes itself into a `Kit`. |

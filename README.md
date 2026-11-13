@@ -66,14 +66,16 @@ If you use more than one Claude config dir (`CLAUDE_CONFIG_DIR`), list them in `
 
 ```json
 {
-  "claude": {
-    "defaultConfigDir": "~/.claude",
-    "byPath": [{ "path": "~/Workspaces/work", "configDir": "~/.claude-work" }]
+  "agents": {
+    "claude": {
+      "defaultConfigDir": "~/.claude",
+      "byPath": [{ "path": "~/Workspaces/work", "configDir": "~/.claude-work" }]
+    }
   }
 }
 ```
 
-The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
+Settings for the whole floor, such as `"app"`, sit at the top of the file, and each agent's settings go under `"agents"`. If your file still has a `"claude"` section at the top, `setup` and `start` stop and print the file with that section moved. The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
 
 #### Headless runs (`claude -p`)
 
@@ -134,7 +136,7 @@ agent-floor setup opencode --write     # ~/.config/opencode/plugins/agent-floor.
 agent-floor setup opencode --project   # .opencode/plugins/agent-floor.js in this repo
 ```
 
-Installs a small plugin file that loads `adapters/opencode-plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup.
+Installs a small plugin file that loads `integrations/opencode/plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup. If you set it up before the plugin moved out of `adapters/`, run the same setup command again.
 
 ### pi
 
@@ -143,7 +145,7 @@ agent-floor setup pi --write         # adds the extension to ~/.pi/agent/setting
 agent-floor setup pi --project       # .pi/settings.json in this repo
 ```
 
-pi loads `extensions/agent-floor-pi.js` from this install into its own process. The extension posts tool activity, waiting and idle states to the floor in the background, so a floor that is down never slows pi. Each pi session gets its own desk in a room named after the project folder.
+pi loads `integrations/pi/agent-floor-pi.js` from this install into its own process. The extension posts tool activity, waiting and idle states to the floor in the background, so a floor that is down never slows pi. Each pi session gets its own desk in a room named after the project folder. If you set it up before the extension moved out of `extensions/`, run the same setup command again.
 
 ### Anything else
 
@@ -215,7 +217,7 @@ Group several repos into one room by giving them the same `AGENT_FLOOR_TEAM`.
 - Each `roster` entry is a desk that is always there, idle with its "job · model" line. When the lead spawns a subagent of that `type`, that desk lights up instead of a new character walking in, and it goes back to idle when the subagent reports back.
 - When a Write or Edit saves a file to `<inbox>/<room slug>/...`, a paper plane flies to the `inboxTo` desk. `decisions` works the same way, and `{slug}` stands for the room the file is filed under.
 - After you edit the file, reload it with `curl -X POST localhost:4317/reload -H 'content-type: application/json' -H "authorization: Bearer $(cat ~/.agent-floor/token)"`. If the file is invalid, the answer names the bad field and the floor keeps its current rooms. Hooks treat an invalid file as no file.
-- Rooms are kept apart from `config.json`, so a mistake in one file never breaks the other. A broken `config.json` stops account labels, and a broken `rooms.json` only stops rooms.
+- Rooms are kept apart from `config.json`, so a mistake in one file never breaks the other. A broken `config.json` stops setup, startup and account labels, and a broken `rooms.json` only stops rooms.
 - The floor saves the roster desks to `~/.agent-floor/state-<port>.json` and brings them back idle on the next start, even when the rooms file is invalid at that moment.
 
 The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a browser tab while it is on screen. A browser tab stops rendering when you close it or switch away, and the server keeps running in the background. Stop it with `agent-floor stop`.
@@ -248,13 +250,13 @@ Static furniture is batched into a few meshes per room with colours baked into v
 Claude Code / Codex / Cursor / pi ───┐
 agent-floor emit, curl, your code ───┼──► POST /events ──► reducer ──► GET /stream (SSE) ──► browser
                                      │                       │                                │
-                                     └─ adapters/*.mjs       └─ shared/protocol.js ◄──────────┘
+                                     └─ integrations/*/      └─ shared/protocol.js ◄──────────┘
                                         map native payloads     same reducer runs on both sides
 ```
 
 - `server/` is a zero-dependency Node HTTP server.
 - `shared/protocol.js` is the event reducer, used verbatim by the server and the browser, so a snapshot plus the stream always matches.
-- `adapters/` turn each tool's hook payload into floor events. They are pure functions with tests.
+- `integrations/` has one folder per tool: its adapter (a pure function from the tool's hook payload to floor events, with tests), its `setup` and `hook` commands, and any plugin or extension the tool loads. `integrations/index.mjs` lists them for the CLI.
 - `src/world/` is the three.js scene: rooms, desks, characters, paper planes and the camera rig.
 - `src/ui/` is the HUD: name tags, speech bubbles, the agent card and the connect sheet.
 - `desktop/` is the Electron shell: native window, tray icon, single instance, auto-launch state.
@@ -267,7 +269,7 @@ cd agent-floor
 npm ci
 npm run dev        # floor server on :4317 + Vite on :5173
 npm run demo       # in another terminal, stream fake agents
-npm test           # protocol, adapters, server
+npm test           # protocol, integrations, server
 npm run build      # typecheck + production build into dist/
 ```
 

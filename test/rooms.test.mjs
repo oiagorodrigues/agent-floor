@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fromClaude } from '../adapters/claude.mjs';
+import { fromClaude } from '../integrations/claude/adapter.mjs';
 import { loadRooms, mailTarget, parseRooms, roomForPath, seedEvents } from '../lib/rooms.mjs';
 import { applyEvent, createState, normalizeEvent, settlePinned, sweep } from '../shared/protocol.js';
 import { startServer } from '../server/index.mjs';
