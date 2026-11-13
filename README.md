@@ -240,7 +240,7 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 
 ## Performance
 
-Static furniture is batched into a few meshes per room with colours baked into vertices, characters are one mesh per moving part, shadows refresh a few times a second, monitors only redraw near the camera, and the render resolution adapts to your frame rate. A building with 50+ agents holds 60 fps on an M-series MacBook. Add `?stats` to the URL (or `agent-floor demo --agents 60` for a stress test) to see draw calls, frame time and rebuild cost.
+Static furniture is batched into a few meshes per room with colours baked into vertices, all characters draw in two batched calls, shadows refresh a few times a second, monitors only redraw near the camera, and the render resolution adapts to your frame rate. A building with 50+ agents holds 60 fps on an M-series MacBook. Add `?stats` to the URL (or `agent-floor demo --agents 60` for a stress test) to see draw calls, frame time and rebuild cost.
 
 ## How it works
 

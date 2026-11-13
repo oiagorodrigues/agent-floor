@@ -34,6 +34,8 @@ import type { Agent, WorldState } from '../../shared/protocol';
 import type { ViewEffect } from '../core/store';
 import { Character, findAgentId, PICK_LAYER } from './Character';
 import { Courier } from './Courier';
+import { Crowd } from './crowd';
+import { bakedMat } from './kit';
 import { computeLayout, SeatBook, type BuildingLayout, type RoomLayout } from './layout';
 import { Building } from './Building';
 import { setNightGlow } from './props';
@@ -85,6 +87,7 @@ export class World {
   private ground: Mesh;
   private groundMat: MeshStandardMaterial;
   private courier = new Courier();
+  private crowd = new Crowd(bakedMat);
   private rooms = new Map<string, TeamRoom>();
   private agents = new Map<string, Seated>();
   private plan: BuildingLayout | null = null;
@@ -160,7 +163,7 @@ export class World {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.3;
     this.ground.receiveShadow = true;
-    this.scene.add(this.ground, this.courier.root, this.building.root);
+    this.scene.add(this.ground, this.courier.root, this.building.root, this.crowd.casters, this.crowd.others);
 
     this.camera.position.set(18, 20, 24);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -298,7 +301,7 @@ export class World {
         s = undefined;
       }
       if (!s) {
-        const character = new Character(agent);
+        const character = new Character(agent, this.crowd);
         const desk = new Workstation(agent);
         const roomObj = this.rooms.get(agent.team)!;
         roomObj.floor.add(desk.root, character.root);
