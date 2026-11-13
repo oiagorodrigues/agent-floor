@@ -1,9 +1,10 @@
 // Cursor agent hooks -> Agent Floor events.
 // Cursor writes a JSON payload to the hook's stdin. We only subscribe to hooks
-// that observe (after*, stop, beforeSubmitPrompt) so Agent Floor can never change
-// a permission decision. See docs/integrations.md for the hooks.json snippet.
+// that observe (after*, stop, subagentStop, sessionEnd, beforeSubmitPrompt) so
+// Agent Floor can never change a permission decision. See docs/integrations.md
+// for the hooks.json snippet.
 import { basename } from 'node:path';
-import { machineName, sharesConversation, shortId, teamFromCwd } from './common.mjs';
+import { machineName, pretty, sharesConversation, shortId, slugKey, teamFromCwd } from './common.mjs';
 
 export function fromCursor(input, { sharePrompts = sharesConversation(), machine = machineName() } = {}) {
   if (!input || typeof input !== 'object') return [];
@@ -35,6 +36,8 @@ export function fromCursor(input, { sharePrompts = sharesConversation(), machine
       return [{ type: 'tool', ...base, tool: 'MCP', activity: `MCP: ${input.tool_name ?? 'tool'}` }];
     case 'afterAgentResponse':
       return [{ type: 'status', ...base, status: 'thinking', activity: sharePrompts ? `Replied: ${input.text ?? ''}` : 'Replied' }];
+    case 'subagentStop':
+      return subagentVisit(input, base, sharePrompts);
     case 'stop':
       return [
         {
@@ -44,9 +47,46 @@ export function fromCursor(input, { sharePrompts = sharesConversation(), machine
           activity: input.status === 'error' ? 'Stopped with an error' : 'Waiting for you',
         },
       ];
+    case 'sessionEnd':
+      return [{ type: 'leave', ...base, activity: 'Session ended' }];
     default:
       return [];
   }
+}
+
+// subagentStart is a permission hook: Cursor requires it to answer allow or deny.
+// So the helper's whole visit is drawn when subagentStop reports it: it joins with
+// its brief, reports back to the lead and finishes.
+function subagentVisit(input, base, sharePrompts) {
+  const lead = input.parent_conversation_id ? { ...base, agent: `cursor:${shortId(input.parent_conversation_id)}` } : base;
+  const type = input.subagent_type || 'generalPurpose';
+  const failed = input.status === 'error';
+  const helper = {
+    agent: `${lead.agent}:${shortId(input.subagent_id || slugKey(type), 12)}`,
+    parent: lead.agent,
+    team: lead.team,
+    source: lead.source,
+  };
+  return [
+    {
+      type: 'join',
+      ...helper,
+      name: pretty(type),
+      role: type,
+      status: 'working',
+      activity: `${pretty(type)} task`,
+      text: sharePrompts ? input.task : undefined,
+    },
+    {
+      type: 'message',
+      ...helper,
+      to: lead.agent,
+      text: (sharePrompts && input.summary) || (failed ? 'Hit an error' : 'Report ready'),
+      status: failed ? 'error' : 'done',
+    },
+    { type: 'status', agent: helper.agent, status: failed ? 'error' : 'done', activity: failed ? 'Stopped with an error' : 'Handed back results' },
+    { type: 'status', ...lead, status: 'thinking', activity: `Reviewing ${pretty(type)} report` },
+  ];
 }
 
 /** What each Cursor hook must print on stdout. Observing hooks print nothing. */

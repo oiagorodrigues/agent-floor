@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { lstat, mkdtemp, readdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isAgentFloorHook, mergeClaudeHooks, mergeCursorHooks, updateJsonFile } from '../lib/settings.mjs';
 
 const ours = (cmd = "node '/app/bin/agent-floor.mjs' hook claude --config-dir '/h/.claude'") => ({
@@ -61,6 +63,30 @@ test('cursor merge keeps other entries', () => {
   const current = { version: 1, hooks: { stop: [{ command: './mine.sh' }, { command: 'agent-floor hook cursor' }] } };
   const next = mergeCursorHooks(current, { version: 1, hooks: { stop: [{ command: "node '/app/bin/agent-floor.mjs' hook cursor" }] } });
   assert.deepEqual(next.hooks.stop, [{ command: './mine.sh' }, { command: "node '/app/bin/agent-floor.mjs' hook cursor" }]);
+});
+
+test('setup cursor --write upgrades old hooks, installs only observing ones and is idempotent', async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), 'agent-floor-cursor-setup-')));
+  const cli = fileURLToPath(new URL('../bin/agent-floor.mjs', import.meta.url));
+  const env = { ...process.env, HOME: home, AGENT_FLOOR_HOME: join(home, '.agent-floor') };
+  const path = join(home, '.cursor', 'hooks.json');
+  const guard = { command: './guard.sh' };
+  await mkdir(join(home, '.cursor'));
+  await writeFile(path, JSON.stringify({ version: 1, hooks: { stop: [{ command: 'agent-floor hook cursor' }], beforeShellExecution: [guard] } }));
+
+  execFileSync(process.execPath, [cli, 'setup', 'cursor', '--write'], { env });
+  const first = await readFile(path, 'utf8');
+  const { hooks } = JSON.parse(first);
+  const ourEvents = Object.keys(hooks).filter((e) => hooks[e].some(isAgentFloorHook));
+  for (const e of ['subagentStop', 'sessionEnd', 'stop', 'beforeSubmitPrompt']) assert.ok(ourEvents.includes(e), e);
+  for (const e of ['subagentStart', 'preToolUse', 'beforeShellExecution', 'beforeMCPExecution', 'beforeReadFile', 'beforeTabFileRead'])
+    assert.ok(!ourEvents.includes(e), `${e} gates a permission`);
+  assert.ok(ourEvents.every((e) => hooks[e].filter(isAgentFloorHook).length === 1), 'one Agent Floor entry per hook');
+  assert.deepEqual(hooks.beforeShellExecution, [guard]);
+
+  const again = execFileSync(process.execPath, [cli, 'setup', 'cursor', '--write'], { env, encoding: 'utf8' });
+  assert.match(again, /already has the current Agent Floor hooks/);
+  assert.equal(await readFile(path, 'utf8'), first);
 });
 
 async function fixture(content) {

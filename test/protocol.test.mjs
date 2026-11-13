@@ -78,11 +78,13 @@ test('prompts, replies and thoughts stay off the floor unless shared', () => {
     prompt: 'secret ask',
     text: 'secret thought',
   }));
+  const cursorSubagent = { hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'sub1', subagent_type: 'explore', task: 'secret brief', summary: 'secret findings', status: 'completed' };
   const hidden = [
     ...fromClaude(claudePrompt, { sharePrompts: false }),
     ...fromClaude(spawn, { sharePrompts: false }),
     ...fromCodex(codexTurn, { sharePrompts: false }),
     ...cursorEvents.flatMap((e) => fromCursor(e, { sharePrompts: false })),
+    ...fromCursor(cursorSubagent, { sharePrompts: false }),
   ];
   assert.doesNotMatch(JSON.stringify(hidden), /secret/);
   assert.equal(fromClaude(claudePrompt, { sharePrompts: false })[0].status, 'thinking');
@@ -92,6 +94,9 @@ test('prompts, replies and thoughts stay off the floor unless shared', () => {
   assert.equal(fromClaude(spawn, { sharePrompts: true })[1].text, 'secret brief');
   assert.equal(fromCodex(codexTurn, { sharePrompts: true }).at(-1).activity, 'Replied: secret answer');
   assert.equal(fromCursor(cursorEvents[1], { sharePrompts: true })[0].activity, 'secret thought');
+  const sharedSubagent = fromCursor(cursorSubagent, { sharePrompts: true });
+  assert.equal(sharedSubagent.find((e) => e.type === 'join').text, 'secret brief');
+  assert.equal(sharedSubagent.find((e) => e.type === 'message').text, 'secret findings');
 });
 
 test('claude account reaches the lead and its helpers', () => {
@@ -110,6 +115,84 @@ test('cursor adapter only answers beforeSubmitPrompt', () => {
   assert.equal(evs[0].activity, 'Edited a.md');
   assert.equal(cursorResponse('afterFileEdit'), '');
   assert.deepEqual(JSON.parse(cursorResponse('beforeSubmitPrompt')), { continue: true });
+});
+
+// Payload shapes follow https://cursor.com/docs/hooks (common fields plus each hook's own).
+const cursorCommon = {
+  conversation_id: 'conv-1234abcd',
+  generation_id: 'gen-1',
+  model: 'claude-sonnet',
+  cursor_version: '2.4.0',
+  workspace_roots: ['/home/me/storefront'],
+  user_email: 'me@example.com',
+};
+const cursorSubagentStop = (over = {}) => ({
+  ...cursorCommon,
+  hook_event_name: 'subagentStop',
+  parent_conversation_id: 'conv-1234abcd',
+  subagent_id: 'sub-9f8e7d6c',
+  subagent_type: 'explore',
+  task: 'Find where checkout totals are computed',
+  status: 'completed',
+  summary: 'Totals are computed in cart/total.ts',
+  modified_files: [],
+  ...over,
+});
+
+test('cursor subagentStop brings a helper in, reports back and finishes', () => {
+  const s = createState();
+  for (const ev of fromCursor({ ...cursorCommon, hook_event_name: 'beforeSubmitPrompt', prompt: 'x' }, { sharePrompts: false })) run(s, ev);
+  const effects = fromCursor(cursorSubagentStop(), { sharePrompts: false }).flatMap((ev) => run(s, ev).effects);
+  const helper = s.agents['cursor:conv1234:sub9f8e7d6c'];
+  assert.equal(helper.parent, 'cursor:conv1234');
+  assert.equal(helper.team, 'storefront');
+  assert.equal(helper.role, 'explore');
+  assert.equal(helper.status, 'done');
+  assert.equal(s.agents['cursor:conv1234'].status, 'thinking');
+  assert.ok(effects.some((e) => e.kind === 'message' && e.from === 'cursor:conv1234' && e.to === helper.id), 'lead briefs the helper');
+  assert.ok(effects.some((e) => e.kind === 'message' && e.from === helper.id && e.to === 'cursor:conv1234' && e.text === 'Report ready'));
+  assert.equal(Object.keys(s.agents).length, 2);
+});
+
+test('cursor subagentStop with an error leaves the helper red', () => {
+  const s = createState();
+  for (const ev of fromCursor(cursorSubagentStop({ status: 'error', summary: undefined }), { sharePrompts: false })) run(s, ev);
+  const helper = s.agents['cursor:conv1234:sub9f8e7d6c'];
+  assert.equal(helper.status, 'error');
+  assert.equal(helper.activity, 'Stopped with an error');
+});
+
+test('cursor subagentStop hangs the helper under parent_conversation_id', () => {
+  const evs = fromCursor(cursorSubagentStop({ conversation_id: 'child-7777' }), { sharePrompts: false });
+  assert.equal(evs.find((e) => e.type === 'join').parent, 'cursor:conv1234');
+  assert.equal(evs.at(-1).agent, 'cursor:conv1234');
+});
+
+test('cursor sessionEnd makes the lead leave', () => {
+  const evs = fromCursor({
+    ...cursorCommon,
+    hook_event_name: 'sessionEnd',
+    session_id: 'conv-1234abcd',
+    reason: 'user_close',
+    duration_ms: 45000,
+    is_background_agent: false,
+    final_status: 'completed',
+  });
+  assert.deepEqual(
+    evs.map((e) => [e.type, e.agent]),
+    [['leave', 'cursor:conv1234']],
+  );
+});
+
+test('cursor hooks never answer a permission decision', () => {
+  const permissionHooks = ['beforeShellExecution', 'beforeMCPExecution', 'beforeReadFile', 'beforeTabFileRead', 'subagentStart', 'preToolUse'];
+  const installed = ['beforeSubmitPrompt', 'afterAgentThought', 'afterAgentResponse', 'afterFileEdit', 'afterShellExecution', 'afterMCPExecution', 'subagentStop', 'stop', 'sessionEnd'];
+  for (const hook of [...permissionHooks, ...installed]) {
+    const out = cursorResponse(hook);
+    if (!out) continue;
+    assert.ok(!('permission' in JSON.parse(out)), `${hook} must not answer a permission`);
+  }
+  assert.equal(cursorResponse('subagentStart'), '');
 });
 
 test('sweep removes departed agents and empty teams', () => {
