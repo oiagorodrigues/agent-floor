@@ -30,7 +30,7 @@ The real snippet also covers `UserPromptSubmit`, `Notification`, `Stop`, `Subage
 | `Stop` | Idle. |
 | `SessionEnd` | The lead walks out. |
 
-Run `agent-floor setup claude --project` to print a snippet for one repository's `.claude/settings.json` instead.
+Run `agent-floor setup claude --project` to print a snippet for one repository's `.claude/settings.json` instead, or `agent-floor setup claude --settings <file>` for a file you pass to `claude -p --settings` in scripted runs.
 
 ## Codex
 
