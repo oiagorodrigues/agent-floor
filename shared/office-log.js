@@ -47,18 +47,14 @@ export function describe(ev, nameOf, teamOf) {
   }
 }
 
-/**
- * Every change up to `until` as sentences, with names as the floor knew them at
- * the time. `backlog` is what the server saw before this window connected, so
- * it all comes before any moment replay can reach.
- */
-export function buildLines(backlog, entries, state, until) {
+/** Every change up to `until` as sentences, with names as the floor knew them at the time. */
+export function buildLines(entries, state, until) {
   const names = new Map();
   const teams = new Map();
   const nameOf = (id) => names.get(id) || state.agents[id]?.name || tidy(id);
   const teamOf = (id) => teams.get(id) || state.agents[id]?.team;
   const out = [];
-  for (const e of [...backlog, ...entries]) {
+  for (const e of entries) {
     if (e.at > until) break;
     const ev = e.event;
     if (!ev) continue;

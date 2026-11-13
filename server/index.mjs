@@ -1,7 +1,7 @@
 // Agent Floor server. Zero dependencies.
 //
 //   POST /events        one event or an array of events (see docs/protocol.md)
-//   GET  /stream        Server-Sent Events: a `snapshot` (state and recent events), then `event` + `effects`
+//   GET  /stream        Server-Sent Events: a `snapshot` (state and the last 30 minutes), then `event` + `effects`
 //   GET  /state         current world as JSON
 //   POST /reset         clear the floor
 //   POST /shutdown      close the server, then call onShutdown (agent-floor stop)
@@ -42,11 +42,11 @@ export function startServer({
   token = localState.readToken(),
   randomNames = process.env.AGENT_FLOOR_RANDOM_NAMES !== '0',
   onShutdown,
+  recent = createRecent(),
 } = {}) {
   const expected = Buffer.from(`Bearer ${token}`);
   const state = createState();
   const clients = new Set();
-  const recent = createRecent();
 
   function broadcast(name, data) {
     const frame = `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -71,7 +71,7 @@ export function startServer({
     if (!ev) return false;
     if (randomNames && ev.type !== 'reset') nameAgent(ev);
     const { effects, actor } = applyEvent(state, ev);
-    if (ev.type === 'reset') recent.clear();
+    if (ev.type === 'reset') recent.reset(state);
     else recent.add(ev, actor);
     broadcast('event', { event: ev, effects });
     return true;
@@ -79,7 +79,9 @@ export function startServer({
 
   const sweeper = setInterval(() => {
     const removed = sweep(state);
-    if (removed.length) broadcast('removed', { agents: removed });
+    if (!removed.length) return;
+    recent.removed(removed);
+    broadcast('removed', { agents: removed });
   }, 2000);
   const heartbeat = setInterval(() => {
     for (const res of clients) res.write(': ping\n\n');
@@ -172,7 +174,7 @@ export function startServer({
           Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
         });
-        res.write(`retry: 1500\nevent: snapshot\ndata: ${JSON.stringify({ version: PROTOCOL_VERSION, state, recent: recent.entries() })}\n\n`);
+        res.write(`retry: 1500\nevent: snapshot\ndata: ${JSON.stringify({ version: PROTOCOL_VERSION, state, ...recent.history() })}\n\n`);
         clients.add(res);
         req.on('close', () => clients.delete(res));
         return;

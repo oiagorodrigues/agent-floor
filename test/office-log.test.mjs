@@ -25,7 +25,7 @@ test('the log reads as handoffs, tool calls and calls for attention', () => {
     { type: 'status', agent: 'kid', status: 'done', activity: 'Handed back results' },
     { type: 'status', agent: 'lead', status: 'waiting', activity: 'Approve the edit?' },
   ]);
-  const lines = buildLines([], entries, state, Infinity);
+  const lines = buildLines(entries, state, Infinity);
   assert.deepEqual(
     lines.map((l) => `${l.who}: ${l.text}`),
     ['Ada: Arrived', 'Ada → Gus: Find the bug', 'Gus: Reading cart.ts', 'Gus → Ada: Report ready', 'Ada: Needs you: Approve the edit?'],
@@ -33,16 +33,15 @@ test('the log reads as handoffs, tool calls and calls for attention', () => {
   assert.equal(linesToText(lines.slice(0, 1), time), '1000  Ada: Arrived');
 });
 
-test('replay shows the server backlog and what happened up to the playhead', () => {
+test('replay shows only what happened up to the playhead', () => {
   const { state, entries } = floor([
     { type: 'join', agent: 'lead', team: 'Core', name: 'Ada' },
     { type: 'tool', agent: 'lead', tool: 'Bash', activity: 'Running tests' },
   ]);
-  const backlog = [{ at: 1, event: normalizeEvent({ type: 'join', agent: 'early', name: 'Bea', ts: 1 }) }];
-  assert.equal(buildLines(backlog, entries, state, Infinity).length, 3);
+  assert.equal(buildLines(entries, state, Infinity).length, 2);
   assert.deepEqual(
-    buildLines(backlog, entries, state, 1000).map((l) => `${l.who}: ${l.text}`),
-    ['Bea: Arrived', 'Ada: Arrived'],
+    buildLines(entries, state, 1000).map((l) => `${l.who}: ${l.text}`),
+    ['Ada: Arrived'],
   );
 });
 
@@ -53,10 +52,9 @@ test('a reset starts the log over, so nothing from before it stays on screen', (
     { type: 'reset' },
     { type: 'join', agent: 'next', team: 'Core', name: 'Bea' },
   ]);
-  const backlog = [{ at: 1, event: normalizeEvent({ type: 'join', agent: 'early', name: 'Cleo', ts: 1 }) }];
   assert.deepEqual(
-    buildLines(backlog, entries, state, Infinity).map((l) => `${l.who}: ${l.text}`),
+    buildLines(entries, state, Infinity).map((l) => `${l.who}: ${l.text}`),
     ['Bea: Arrived'],
   );
-  assert.equal(buildLines(backlog, entries, state, 2500).length, 3, 'replay before the reset still shows what happened then');
+  assert.equal(buildLines(entries, state, 2500).length, 2, 'replay before the reset still shows what happened then');
 });

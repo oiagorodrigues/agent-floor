@@ -78,11 +78,11 @@ export class OfficeLog {
     const until = store.replay?.t ?? Infinity;
     const team = store.selected ? state.agents[store.selected]?.team : undefined;
     const entries = store.entries;
-    const key = `${store.backlog.length}:${entries.length}:${entries.at(-1)?.at}:${team}:${Math.floor(until / 1000)}`;
+    const key = `${entries.length}:${entries.at(-1)?.at}:${team}:${Math.floor(until / 1000)}`;
     if (key === this.renderedKey) return;
     this.renderedKey = key;
 
-    this.lines = buildLines(store.backlog, entries, state, until).filter((l) => !team || l.team === team);
+    this.lines = buildLines(entries, state, until).filter((l) => !team || l.team === team);
     if (this.lines.length > MAX_ROWS) this.lines = this.lines.slice(-MAX_ROWS);
     const teamName = team ? state.teams[team]?.name || team : 'All rooms';
     this.title.innerHTML = `<b>Office log</b><span>${esc(teamName)}</span>`;

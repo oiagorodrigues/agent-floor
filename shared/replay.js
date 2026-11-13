@@ -31,6 +31,18 @@ export class Recording {
     this.#keepEntries = keepEntries;
   }
 
+  /** A recording that starts from `base` (the floor at `start`) with `entries` played on top. */
+  static from(base, start, entries, opts) {
+    const rec = new Recording(base, start, opts);
+    for (const entry of entries) rec.record(entry);
+    return rec;
+  }
+
+  /** The floor at `start`. Plus `entries`, it rebuilds the latest state. Read only. */
+  get base() {
+    return this.#base;
+  }
+
   get start() {
     return this.#start;
   }
@@ -43,11 +55,16 @@ export class Recording {
     return this.#view;
   }
 
-  /** Add a change. Entries past the age or count limit are folded into the starting state. */
+  /** Add a change, then trim. */
   record(entry) {
+    this.#log.push(entry);
+    this.trim(entry.at);
+  }
+
+  /** Fold entries past the count limit, or older than the time limit at `now`, into the starting state. */
+  trim(now) {
     const log = this.#log;
-    log.push(entry);
-    const cutoff = entry.at - this.#keepMs;
+    const cutoff = now - this.#keepMs;
     let drop = 0;
     while (drop < log.length && (log.length - drop > this.#keepEntries || log[drop].at < cutoff)) {
       applyEntry(this.#base, log[drop]);

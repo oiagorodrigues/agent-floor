@@ -1,7 +1,7 @@
 import { applyEvent, createState, normalizeEvent, removeAgents, sweep } from '../../shared/protocol.js';
 import { Recording } from '../../shared/replay.js';
 import type { Effect, FloorEvent, InboundEvent, WorldState } from '../../shared/protocol';
-import type { LogEntry } from '../../shared/replay';
+import type { History, LogEntry } from '../../shared/replay';
 
 export type ConnectionMode = 'connecting' | 'live' | 'demo' | 'offline';
 
@@ -30,8 +30,8 @@ class Store {
 
   private live: WorldState = createState();
   private recording = new Recording(this.live, Date.now());
-  /** Events the server saw before this window connected. Only the office log reads them. */
-  private before: LogEntry[] = [];
+  /** Latest `at` recorded, so entries stay in order when the server's clock runs ahead of this one. */
+  private lastAt = 0;
   private listeners = new Set<Listener>();
   private effectListeners = new Set<EffectListener>();
 
@@ -48,10 +48,6 @@ class Store {
   /** The recorded changes, oldest first. */
   get entries(): readonly LogEntry[] {
     return this.recording.entries;
-  }
-
-  get backlog(): readonly LogEntry[] {
-    return this.before;
   }
 
   subscribe(fn: Listener) {
@@ -84,10 +80,11 @@ class Store {
     this.emit();
   }
 
-  replace(state: WorldState, before: LogEntry[] = []) {
+  /** Start over from a snapshot. With `history`, replay and the log reach back to `history.baseAt`. */
+  replace(state: WorldState, history?: History) {
     this.live = state;
-    this.before = before;
-    this.recording = new Recording(state, Date.now());
+    this.recording = history ? Recording.from(history.base, history.baseAt, history.recent) : new Recording(state, Date.now());
+    this.lastAt = this.recording.entries.at(-1)?.at ?? this.recording.start;
     this.replay = null;
     this.emitEffects([{ kind: 'reset' }]);
     this.emit();
@@ -96,7 +93,7 @@ class Store {
   /** Apply an event that the server already normalised, with the effects it computed. */
   applyRemote(event: FloorEvent, effects: Effect[]) {
     const { actor } = applyEvent(this.live, event);
-    this.record({ at: Date.now(), event: structuredClone(event), actor });
+    this.record({ at: this.stamp(), event: structuredClone(event), actor });
     if (this.replay) return this.emit();
     // State first so the scene has every character before effects animate them.
     this.emit();
@@ -108,7 +105,7 @@ class Store {
     const ev = normalizeEvent(raw);
     if (!ev) return;
     const { effects, actor } = applyEvent(this.live, ev);
-    this.record({ at: Date.now(), event: structuredClone(ev), actor });
+    this.record({ at: this.stamp(), event: structuredClone(ev), actor });
     if (this.replay) return this.emit();
     this.emit();
     this.emitEffects(effects);
@@ -117,7 +114,7 @@ class Store {
   remove(ids: string[]) {
     const removed = removeAgents(this.live, ids);
     if (!removed.length) return;
-    this.record({ at: Date.now(), removed });
+    this.record({ at: this.stamp(), removed });
     if (!this.replay && this.selected && !this.live.agents[this.selected]) this.selected = null;
     this.emit();
   }
@@ -125,17 +122,18 @@ class Store {
   sweepLocal() {
     const removed = sweep(this.live);
     if (!removed.length) return;
-    this.record({ at: Date.now(), removed });
+    this.record({ at: this.stamp(), removed });
     if (!this.replay && this.selected && removed.includes(this.selected)) this.selected = null;
     this.emit();
   }
 
+  private stamp() {
+    this.lastAt = Math.max(Date.now(), this.lastAt);
+    return this.lastAt;
+  }
+
   private record(entry: LogEntry) {
-    const start = this.recording.start;
     this.recording.record(entry);
-    // The backlog ends at a reset, and once the recording starts dropping its own
-    // oldest entries, the backlog is older still.
-    if (entry.event?.type === 'reset' || this.recording.start !== start) this.before = [];
     if (this.replay && this.replay.t < this.recording.start) this.replay.t = this.recording.start;
   }
 

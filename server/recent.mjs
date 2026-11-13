@@ -1,32 +1,33 @@
-// The last 30 minutes of events, kept in memory only, so a window that opens
-// mid-run can still show the office log from the start. It holds the same
-// normalised events the stream already broadcasts, nothing more.
+// The last 30 minutes of the floor, kept in memory only: the state at the start
+// of that window (`base`) and every change since (`recent`). A window that opens
+// mid-run gets both, so it can replay and log the whole window. They hold only
+// reduced state and the normalised events the stream already broadcasts.
+import { createState } from '../shared/protocol.js';
+import { Recording } from '../shared/replay.js';
+
 export const RECENT_MS = 30 * 60_000;
 export const RECENT_MAX = 2000;
 
 export function createRecent({ keepMs = RECENT_MS, max = RECENT_MAX, now = Date.now } = {}) {
-  let list = [];
-
-  function trim(at) {
-    const cutoff = at - keepMs;
-    let drop = 0;
-    while (drop < list.length && (list.length - drop > max || list[drop].at < cutoff)) drop++;
-    if (drop) list = list.slice(drop);
-  }
+  const opts = { keepMs, keepEntries: max };
+  let rec = new Recording(createState(), now(), opts);
 
   return {
+    /** Start over from `state`, the floor right after a reset. */
+    reset(state) {
+      rec = new Recording(state, now(), opts);
+    },
     add(event, actor) {
-      const at = now();
-      list.push(actor && actor !== event.agent ? { at, event, actor } : { at, event });
-      trim(at);
+      rec.record(actor && actor !== event.agent ? { at: now(), event, actor } : { at: now(), event });
     },
-    clear() {
-      list = [];
+    /** Agents the sweeper dropped. Recorded so `base` plus `recent` keeps matching the live floor. */
+    removed(ids) {
+      rec.record({ at: now(), removed: ids });
     },
-    /** Entries oldest first, as `{ at, event, actor? }`. */
-    entries() {
-      trim(now());
-      return list;
+    /** `{ base, baseAt, recent }`, trimmed to the window as of now. */
+    history() {
+      rec.trim(now());
+      return { base: rec.base, baseAt: rec.start, recent: rec.entries };
     },
   };
 }

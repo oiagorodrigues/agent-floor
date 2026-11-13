@@ -1,6 +1,6 @@
 import { createScript } from '../../shared/demo-script.js';
 import type { Effect, FloorEvent, WorldState } from '../../shared/protocol';
-import type { LogEntry } from '../../shared/replay';
+import type { History } from '../../shared/replay';
 import { store } from './store';
 import { DEMO_ONLY } from '../config';
 
@@ -62,8 +62,11 @@ export function connect() {
       opened = true;
       window.clearTimeout(fallback);
       stopDemo();
-      const { state, recent } = JSON.parse((msg as MessageEvent).data) as { state: WorldState; recent?: LogEntry[] };
-      store.replace(state, Array.isArray(recent) ? recent : []);
+      const snap = JSON.parse((msg as MessageEvent).data) as { state: WorldState } & Partial<History>;
+      const { state, base, baseAt, recent } = snap;
+      // Servers without history (older versions) still work: replay then starts at this snapshot.
+      const history = base && typeof base === 'object' && typeof baseAt === 'number' && Array.isArray(recent) ? { base, baseAt, recent } : undefined;
+      store.replace(state, history);
       store.setMode('live');
     });
     es.addEventListener('event', (msg) => {

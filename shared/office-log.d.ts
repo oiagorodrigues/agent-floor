@@ -13,5 +13,5 @@ export interface LogLine {
 
 export function clock(ts: number): string;
 export function describe(ev: FloorEvent, nameOf: (id: string) => string, teamOf: (id: string) => string | undefined): LogLine | null;
-export function buildLines(backlog: readonly LogEntry[], entries: readonly LogEntry[], state: WorldState, until: number): LogLine[];
+export function buildLines(entries: readonly LogEntry[], state: WorldState, until: number): LogLine[];
 export function linesToText(lines: readonly LogLine[], formatTime?: (ts: number) => string): string;

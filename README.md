@@ -45,9 +45,9 @@ No agents yet? Click **Watch demo**, or run `agent-floor demo` in a second termi
 
 Coloured magnets on each whiteboard show every team member's status at a glance.
 
-**Replay.** Press `R` (or the clock button) to rewind. The floor replays everything this window has seen in the last 30 minutes at 4× speed, paper planes included. Drag the timeline to jump to any moment: orange ticks are messages, amber ticks are agents waiting on you or hitting an error, and green ticks are arrivals. `Space` pauses, `←` and `→` step 10 seconds, and **Live** brings you back to now. Replay runs in your browser with the same reducer the server uses, so it shows exactly what happened.
+**Replay.** Press `R` (or the clock button) to rewind. The floor replays its last 30 minutes at 4× speed, paper planes included, even if you opened the window a moment ago. Drag the timeline to jump to any moment: orange ticks are messages, amber ticks are agents waiting on you or hitting an error, and green ticks are arrivals. `Space` pauses, `←` and `→` step 10 seconds, and **Live** brings you back to now. Replay runs in your browser with the same reducer the server uses, so it shows exactly what happened.
 
-**Office log.** Press `L` (or the list button) for a running log in plain sentences: who did what, who handed what to whom, and when someone needs you. It covers the server's last 30 minutes, even from before the window opened, follows the selected agent's room and follows replay. **Copy** puts the log on your clipboard as text.
+**Office log.** Press `L` (or the list button) for a running log in plain sentences: who did what, who handed what to whom, and when someone needs you. It covers the same 30 minutes, follows the selected agent's room and follows replay. **Copy** puts the log on your clipboard as text.
 
 **Controls:** drag to pan, right-drag to orbit, scroll to zoom, click an agent or a room. `F` frames everyone, `[` and `]` step through agents, `R` opens replay, `L` opens the office log, `T` switches day and night, `Esc` closes things. On touch: one finger pans, two fingers zoom and rotate.
 
@@ -194,7 +194,7 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 - The server masks secrets in every event, whether it comes from a hook, `agent-floor emit` or your own POST, before it reaches the floor. It catches tokens with a known prefix (`ghp_`, `gho_`, `github_pat_`, `sk-`, `sk-ant-`, `xoxb-`, `xoxp-`, `AKIA`, JWTs), `Authorization` headers, `curl -u user:pass`, passwords in URLs, and values labelled `password`, `passwd`, `token`, `secret`, `api_key`, `apikey` or `access_key`. The secret becomes `[redacted]` and its label stays, so `GITHUB_TOKEN=ghp_â¦` shows as `GITHUB_TOKEN=[redacted]`. Masking matches patterns, so a secret in an unknown format, or an unquoted `password: word` without a digit, can still show.
 - Hooks time out after 1.2 seconds, swallow every error and always exit 0. The pi extension never makes pi wait for the floor, gives each request 0.8 seconds and swallows every error. If the floor is down, your agents never notice.
 - Nothing is stored on disk and nothing is sent anywhere else. Activity text is clipped to 280 characters.
-- For the office log, the server keeps the last 30 minutes of events (at most 2,000) in memory and sends them only with the `/stream` snapshot. They are the same events the stream already carries, so prompts are in them only when you set `AGENT_FLOOR_SHARE_PROMPTS=1`.
+- For replay and the office log, the server keeps the last 30 minutes of events (at most 2,000) and the floor as it was at the start of that window, in memory only, and sends them only with the `/stream` snapshot. They come from the same events the stream already carries, so prompts are in them only when you set `AGENT_FLOOR_SHARE_PROMPTS=1`.
 
 ## The desktop app
 
