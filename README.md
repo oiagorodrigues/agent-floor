@@ -75,7 +75,7 @@ If you use more than one Claude config dir (`CLAUDE_CONFIG_DIR`), list them in `
 }
 ```
 
-Settings for the whole floor, such as `"app"`, sit at the top of the file, and each agent's settings go under `"agents"`. The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
+Settings for the whole floor, such as `"app"`, sit at the top of the file, and each agent's settings go under `"agents"`. If your file still has a `"claude"` section at the top, `setup` and `start` stop and print the file with that section moved. The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
 
 #### Headless runs (`claude -p`)
 
@@ -136,7 +136,7 @@ agent-floor setup opencode --write     # ~/.config/opencode/plugins/agent-floor.
 agent-floor setup opencode --project   # .opencode/plugins/agent-floor.js in this repo
 ```
 
-Installs a small plugin file that loads `integrations/opencode/plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup.
+Installs a small plugin file that loads `integrations/opencode/plugin.mjs` from this folder, so it works with OpenCode 1 (1.18.29 and newer) and 2 and updates with Agent Floor. Each opencode session gets its own desk with live tool activity, and the lead goes idle when the session does. Install it in one place only: OpenCode 1 would load both copies and post every event twice. Restart opencode after setup. If you set it up before the plugin moved out of `adapters/`, run the same setup command again.
 
 ### pi
 
@@ -145,7 +145,7 @@ agent-floor setup pi --write         # adds the extension to ~/.pi/agent/setting
 agent-floor setup pi --project       # .pi/settings.json in this repo
 ```
 
-pi loads `integrations/pi/agent-floor-pi.js` from this install into its own process. The extension posts tool activity, waiting and idle states to the floor in the background, so a floor that is down never slows pi. Each pi session gets its own desk in a room named after the project folder.
+pi loads `integrations/pi/agent-floor-pi.js` from this install into its own process. The extension posts tool activity, waiting and idle states to the floor in the background, so a floor that is down never slows pi. Each pi session gets its own desk in a room named after the project folder. If you set it up before the extension moved out of `extensions/`, run the same setup command again.
 
 ### Anything else
 
