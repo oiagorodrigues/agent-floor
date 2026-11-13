@@ -424,7 +424,7 @@ if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
   agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]   (for claude --settings)
   agent-floor emit --agent <id> --status working --activity "Writing tests" [--team checkout]
   agent-floor demo [--agents 60]          (stress test with many agents)
-  agent-floor stop                         stop the floor (and the desktop app); hooks wait 6 hours to reopen it
+  agent-floor stop                         stop the floor (the desktop app quits if it runs it); hooks wait 6 hours to reopen it
   agent-floor quiet [hours]                hooks don't open the floor for a while (default 6); a running floor stays up
   agent-floor hook <claude|codex|cursor>    (called by agent hooks)
 

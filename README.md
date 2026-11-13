@@ -155,7 +155,7 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 
 `agent-floor` (or the first hook event when nothing is running) starts the floor and opens it as an Electron window. If Electron is not available, it falls back to a Chrome or Edge app window, and then to your default browser. Only one copy ever runs: parallel subagents share a launch lock. `agent-floor start` runs just the server, with no window, if you prefer a browser tab at http://localhost:4317.
 
-- `agent-floor stop` stops the running floor, whether it runs in the desktop app or in the background from `agent-floor start` or browser mode, and quits the desktop app with it. Hooks then wait 6 hours before they open the floor again, so the next agent event doesn't bring it straight back. Run `agent-floor` to open it yourself.
+- `agent-floor stop` stops the running floor, whether it runs in the background from `agent-floor start` or browser mode, or inside the desktop app. When the desktop app started the floor, the app quits too. Hooks then wait 6 hours before they open the floor again, so the next agent event doesn't bring it straight back. Run `agent-floor` to open it yourself.
 - `agent-floor quiet [hours]` stops hooks from opening the floor for that many hours (6 by default). A floor that is already running stays up and keeps showing your agents.
 
 ## Performance
