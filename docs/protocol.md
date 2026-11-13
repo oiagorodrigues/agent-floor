@@ -65,6 +65,7 @@ A helper that joined with `stay: true` is not removed when it finishes. When its
 With a rooms file (see the README), the server puts a standing desk on the floor for each `roster` entry, with the id `roster:<room slug>:<type>`, role `<type>` and `pinned: true`. Without a rooms file there are no roster desks and nothing in this section applies.
 
 - A `join` with a `parent` on a roster desk is one spawn: the parent briefs it and it gets to work, like any helper.
+- While a spawn runs, every subagent hint of the desk's type from a lead in the desk's room lands on the desk, so parallel spawns of one type share it.
 - A `status` with `parent: null` ends one spawn. When the last running spawn ends, the desk goes back to idle with its "job · model" line, and its `status` and `activity` fields are ignored.
 - Events can't change a roster desk's `name`, `role`, `team`, `source`, `account` or `machine`. Those come from the rooms file.
 - The server sends a desk back to idle by itself 45 seconds after it ends in `done`, `error` or `offline`, or after 30 minutes without events (an interrupted subagent).

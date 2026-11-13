@@ -117,15 +117,26 @@ test('a roster subagent lights up its own desk and goes back to idle', () => {
   }
   assert.equal(desk.name, 'Live Ops', 'events from the session do not rename the desk');
 
+  const other = { session_id: 'sessOther', cwd: '/srv/game/tools' };
+  claude(s, { ...other, hook_event_name: 'SessionStart' });
   claude(s, spawn);
   claude(s, { ...spawn, tool_use_id: 'tu_2' });
+  claude(s, { ...spawn, ...other, tool_use_id: 'tu_3' });
+  const subagentTool = (session, agent_id, command) =>
+    claude(s, { ...session, hook_event_name: 'PreToolUse', agent_id, agent_type: 'live-ops', tool_name: 'Bash', tool_input: { command } });
+  subagentTool(base, 'ag_a', 'docker ps');
+  subagentTool(base, 'ag_b', 'df -h');
+  subagentTool(other, 'ag_c', 'uptime');
+  assert.equal(Object.keys(s.agents).length, count + 1, 'parallel spawns of one type, from two leads, share the desk');
+  assert.equal(desk.activity, 'Running uptime');
   claude(s, { ...spawn, hook_event_name: 'PostToolUse' });
-  assert.equal(desk.status, 'thinking', 'busy until the last overlapping spawn ends');
   claude(s, { ...spawn, tool_use_id: 'tu_2', hook_event_name: 'PostToolUse' });
+  assert.equal(desk.status, 'working', 'busy until the last overlapping spawn ends');
+  claude(s, { ...spawn, ...other, tool_use_id: 'tu_3', hook_event_name: 'PostToolUse' });
   assert.equal(desk.status, 'idle');
 
-  const other = fromClaude({ ...spawn, tool_input: { subagent_type: 'Explore' } }, { rooms: config });
-  assert.doesNotMatch(other[1].agent, /^roster:/, 'types off the roster still get a temporary desk');
+  const offRoster = fromClaude({ ...spawn, tool_input: { subagent_type: 'Explore' } }, { rooms: config });
+  assert.doesNotMatch(offRoster[1].agent, /^roster:/, 'types off the roster still get a temporary desk');
 });
 
 test('a desk left busy by an interrupted subagent settles back to idle', () => {
@@ -170,6 +181,10 @@ test('an invalid rooms file is reported with the field that is wrong', () => {
   bad({ rooms: [{ slug: 'x', name: 'X', roster: [{ name: 'No type' }] }] }, /rooms\[0\]\.roster\[0\]\.type/);
   bad({ rooms: [{ slug: 'x', name: 'X', roster: [{ type: 'a' }, { type: 'a' }] }] }, /listed twice/);
   bad({ rooms: [{ slug: 'x', name: 'X', roster: [{ type: 'a', job: 3 }] }] }, /roster\[0\]\.job must be a string/);
+  bad({ rooms: [{ slug: 'x', name: 'X', path: ['/srv'] }] }, /rooms\[0\] has an unknown field "path"/);
+  bad({ rooms: [{ slug: 'x', name: 'X', roster: [{ type: 'a', Name: 'A' }] }] }, /roster\[0\] has an unknown field "Name"/);
+  bad({ room: [] }, /the file has an unknown field "room"/);
+  bad({ rooms: [], mail: { inbx: '/in' } }, /mail has an unknown field "inbx"/);
   bad({ rooms: [{ slug: 'x', name: 'X' }, { slug: 'x', name: 'Y' }] }, /two rooms use the slug "x"/);
   bad({ rooms: [{ slug: 'x', name: 'Ops' }, { slug: 'y', name: 'ops' }] }, /share the name/);
   bad({ rooms: [], mail: { inbox: '/in' } }, /mail\.inboxTo must be/);
@@ -239,6 +254,19 @@ test('roster desks are saved owner-only, without activity, and come back after a
     assert.equal(state.agents['roster:game:live-ops'].activity, 'Health checks · haiku');
     assert.equal(state.teams.game.hue, hue);
     assert.ok(logs.some((l) => /rooms\.json: not valid JSON/.test(l)));
+  });
+});
+
+test('a desk a hook opened before the rooms file loaded takes its name from the file', async () => {
+  const dir = floorWith();
+  await withFloor(dir, async ({ base, floor }) => {
+    await post(base, '/events', { type: 'join', agent: 'roster:game:live-ops', parent: 'lead', source: 'claude-code', name: 'Live Ops' });
+    assert.notEqual(floor.state.agents['roster:game:live-ops'].name, 'Live Ops', 'a hook agent gets a random name');
+    writeFileSync(join(dir, 'rooms.json'), JSON.stringify(ROOMS));
+    assert.equal((await post(base, '/reload', {})).status, 200);
+    const desk = floor.state.agents['roster:game:live-ops'];
+    assert.equal(desk.name, 'Live Ops');
+    assert.ok(desk.pinned);
   });
 });
 

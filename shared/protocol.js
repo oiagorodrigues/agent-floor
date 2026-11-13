@@ -183,7 +183,11 @@ function resolveSubagent(state, ev) {
   const parentId = ev.agent;
   const { key, type } = ev.subagent;
   const children = Object.values(state.agents).filter((a) => a.parent === parentId);
-  let match = key && children.find((a) => a.boundKey === key);
+  // A busy roster desk takes every subagent of its type from its room, so parallel
+  // spawns of one type, even from two leads, share the desk. It never binds a key.
+  const team = state.agents[parentId]?.team;
+  const desk = type && Object.values(state.agents).find((a) => a.pinned && a.spawns && a.role === type && a.team === team);
+  let match = desk || (key && children.find((a) => a.boundKey === key));
   if (!match && type) {
     match = children
       .filter((a) => !a.boundKey && a.role === type && a.status !== 'done' && a.status !== 'offline')

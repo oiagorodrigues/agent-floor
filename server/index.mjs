@@ -18,7 +18,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import localState from '../desktop/state.cjs';
 import { loadRooms, roomsPath, seedEvents } from '../lib/rooms.mjs';
-import { applyEvent, createState, deskOf, normalizeEvent, settlePinned, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
+import { applyEvent, createState, deskOf, normalizeEvent, settlePinned, slug, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
 import { pickName } from './names.mjs';
 import { redactDeep } from './redact.mjs';
 import { createRecent } from './recent.mjs';
@@ -81,7 +81,7 @@ export function startServer({
     const ev = normalizeEvent(redactDeep(raw));
     if (!ev) return false;
     if (!trusted) delete ev.pinned;
-    if (randomNames && ev.type !== 'reset') nameAgent(ev);
+    if (randomNames && !trusted && ev.type !== 'reset') nameAgent(ev);
     const { effects, actor } = applyEvent(state, ev);
     if (ev.type === 'reset') recent.reset(state);
     else recent.add(ev, actor);
@@ -149,7 +149,7 @@ export function startServer({
     const num = (v) => Number.isFinite(v);
     const now = Date.now();
     for (const t of Object.values(saved?.teams ?? {})) {
-      if (!text(t?.id) || !text(t.name) || !num(t.hue) || !num(t.order) || !num(t.createdAt)) continue;
+      if (!text(t?.id) || slug(t.id) !== t.id || !text(t.name) || !num(t.hue) || !num(t.order) || !num(t.createdAt)) continue;
       state.teams[t.id] = { id: t.id, name: t.name, hue: t.hue, order: t.order, task: undefined, createdAt: t.createdAt };
     }
     for (const d of Array.isArray(saved?.desks) ? saved.desks : []) {
