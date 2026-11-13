@@ -15,7 +15,7 @@ const CLI = join(ROOT, 'bin/agent-floor.mjs');
 const run = promisify(execFile);
 
 const SESSION = 'ses_8e1f2a3b4c5dK9xQwErTyUiOpA';
-const opts = { directory: '/w/api', sharePrompts: false };
+const opts = { directory: '/w/api', sharePrompts: false, machine: 'work-laptop' };
 
 // Payloads follow the examples and hook types in https://github.com/anomalyco/opencode/blob/85a043926abf98ca967a24b7c12c0aa6b7d81cd3/services/site/src/docs/v1/content/plugins.mdx.
 test('opencode 1 tool hooks become tool activity on the session desk', () => {
@@ -25,6 +25,7 @@ test('opencode 1 tool hooks become tool activity on the session desk', () => {
     agent: opencodeAgentId(SESSION),
     team: 'api',
     source: 'opencode',
+    machine: 'work-laptop',
     name: 'OpenCode',
     role: 'Lead',
     tool: 'read',
