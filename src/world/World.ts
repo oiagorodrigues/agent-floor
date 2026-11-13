@@ -243,6 +243,10 @@ export class World {
   private slowFrames = 0;
   private fastFrames = 0;
   private frameNo = 0;
+  private lastRender = 0;
+  /** The camera moved last frame or the user holds it: render at the display's full rate. */
+  private cameraBusy = true;
+  private lastCamera = new Matrix4();
   private shadowDirty = true;
   /** A fixed pool of night lights that follows the camera: constant shader cost, no recompiles. */
   private nightLights: PointLight[] = [];
@@ -655,6 +659,8 @@ export class World {
   private loop = () => {
     requestAnimationFrame(this.loop);
     const now = performance.now();
+    if (!this.cameraBusy && !this.lockResolution && now - this.lastRender < IDLE_MIN_FRAME_MS) return;
+    this.lastRender = now;
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.elapsed += dt;
@@ -691,6 +697,8 @@ export class World {
     const r0 = performance.now();
     this.renderer.info.reset();
     this.composer.render();
+    this.cameraBusy = this.userDriving || !this.lastCamera.equals(this.camera.matrixWorld);
+    this.lastCamera.copy(this.camera.matrixWorld);
     this.onFrame?.();
     const p = this.perf;
     p.frameMs = p.frameMs * 0.9 + (performance.now() - r0) * 0.1;
@@ -748,6 +756,13 @@ export class World {
     this.bloom.setSize(w, h);
   }
 }
+
+/**
+ * While the camera is still, skip refreshes that come sooner than this. A 120 Hz
+ * display then renders every other refresh (60 fps), and 60 or 90 Hz displays
+ * render every refresh. The scene itself moves slowly enough for 60 fps.
+ */
+const IDLE_MIN_FRAME_MS = 10;
 
 /** Seconds a camera flight takes to (almost) arrive. */
 const FLIGHT_RESPONSE = 1.1;
