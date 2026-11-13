@@ -31,6 +31,7 @@ interface Tag {
   last: { t: string; o: string; z: string; near: boolean; sel: boolean };
   name: HTMLElement;
   role: HTMLElement;
+  machine: HTMLElement;
   dot: HTMLElement;
   activity: HTMLElement;
   key: string;
@@ -338,7 +339,7 @@ export class Hud {
         <span class="avatar" style="--shirt:${shirtFor(a.role)};--skin:${look.skin};--hair:${look.hair}" aria-hidden="true"><i></i></span>
         <div class="who">
           <h2>${esc(a.name)}</h2>
-          <p>${esc(a.role)} in ${esc(team?.name || a.team)}</p>
+          <p>${esc(a.role)} in ${esc(team?.name || a.team)}${a.machine ? ` on ${esc(a.machine)}` : ''}</p>
         </div>
         <button type="button" class="icon-btn close" aria-label="Close">${icon('x')}</button>
       </div>
@@ -443,13 +444,14 @@ export class Hud {
 
   private makeTag(agent: Agent): Tag {
     const root = el('div', 'tag');
-    root.innerHTML = `<div class="tag-line"><span class="dot"></span><b></b><span class="role"></span></div><div class="activity"></div>`;
+    root.innerHTML = `<div class="tag-line"><span class="dot"></span><b></b><span class="role"></span><span class="machine" hidden></span></div><div class="activity"></div>`;
     root.addEventListener('click', () => this.actions.select(agent.id));
     this.tagsLayer.append(root);
     const tag: Tag = {
       root,
       name: root.querySelector('b')!,
       role: root.querySelector('.role')!,
+      machine: root.querySelector('.machine')!,
       dot: root.querySelector('.dot')!,
       activity: root.querySelector('.activity')!,
       key: '',
@@ -460,11 +462,13 @@ export class Hud {
   }
 
   private updateTag(tag: Tag, a: Agent) {
-    const key = `${a.name}|${a.role}|${a.status}|${a.activity}`;
+    const key = `${a.name}|${a.role}|${a.machine}|${a.status}|${a.activity}`;
     if (key === tag.key) return;
     tag.key = key;
     tag.name.textContent = a.name;
     tag.role.textContent = a.role.toLowerCase() === a.name.toLowerCase() ? '' : a.role;
+    tag.machine.textContent = a.machine ?? '';
+    tag.machine.hidden = !a.machine;
     tag.dot.style.background = STATUS_COLORS[a.status];
     tag.root.dataset.status = a.status;
     tag.activity.textContent = a.activity || STATUS_LABEL[a.status];

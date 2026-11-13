@@ -10,6 +10,8 @@ export interface InboundEvent {
   source?: string;
   /** Which account or config the agent runs under, e.g. a Claude config dir label. */
   account?: string;
+  /** Which computer the agent runs on (AGENT_FLOOR_MACHINE). */
+  machine?: string;
   team?: string | { id?: string; name: string };
   parent?: string;
   status?: Status;
@@ -30,6 +32,7 @@ export interface FloorEvent {
   role?: string;
   source?: string;
   account?: string;
+  machine?: string;
   parent?: string;
   team?: string;
   teamName?: string;
@@ -57,6 +60,7 @@ export interface Agent {
   team: string;
   source: string;
   account?: string;
+  machine?: string;
   parent?: string;
   status: Status;
   activity?: string;

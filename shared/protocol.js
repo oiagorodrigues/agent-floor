@@ -60,6 +60,7 @@ export function normalizeEvent(raw, now = Date.now()) {
     role: clip(raw.role ?? agentRaw.role, 40),
     source: clip(raw.source ?? agentRaw.source, 32),
     account: clip(raw.account, 32),
+    machine: clip(raw.machine, 32),
     parent: raw.parent != null ? String(raw.parent).slice(0, 128) : undefined,
     team: teamName ? slug(teamRaw.id ?? teamName) : undefined,
     teamName,
@@ -120,6 +121,7 @@ function ensureAgent(state, ev, now) {
       team: teamId,
       source: ev.source || 'custom',
       account: ev.account,
+      machine: ev.machine,
       parent: ev.parent,
       status: 'idle',
       activity: undefined,
@@ -134,6 +136,7 @@ function ensureAgent(state, ev, now) {
     if (ev.role) agent.role = ev.role;
     if (ev.source) agent.source = ev.source;
     if (ev.account) agent.account = ev.account;
+    if (ev.machine) agent.machine = ev.machine;
     if (ev.parent) agent.parent = ev.parent;
     if (ev.team && ev.team !== agent.team) agent.team = ev.team;
     agent.lastSeen = now;

@@ -5,6 +5,11 @@ export function sharesConversation(env = process.env) {
   return env.AGENT_FLOOR_SHARE_PROMPTS === '1';
 }
 
+/** The computer name from AGENT_FLOOR_MACHINE, or undefined when it isn't set. */
+export function machineName(env = process.env) {
+  return String(env.AGENT_FLOOR_MACHINE ?? '').trim() || undefined;
+}
+
 export function shortId(value, n = 8) {
   return String(value || 'local').replace(/[^a-zA-Z0-9]/g, '').slice(0, n) || 'local';
 }
