@@ -39,6 +39,10 @@ const redacted = [
   ['curl -uuser:pass', 'curl -uadmin:pw https://example.com', `curl -uadmin:${MASK} https://example.com`],
   ['curl -u quoted', 'curl -u "admin:pa ss" https://example.com', `curl -u "admin:${MASK}" https://example.com`],
   ['URL userinfo', 'git clone https://user:pass@github.com/o/r.git', `git clone https://user:${MASK}@github.com/o/r.git`],
+  ['URL password with no user', 'redis://:mypassword@localhost:6379', `redis://:${MASK}@localhost:6379`],
+  ['curl -u with quoted password', 'curl -u admin:"hunter 2" https://example.com', `curl -u admin:"${MASK}" https://example.com`],
+  ['spaced assignment with a quoted value', 'password = "x"', `password = "${MASK}"`],
+  ['spaced assignment with a digit', 'token = abc12345', `token = ${MASK}`],
   ['database URL userinfo', 'postgres://app:Sup3r@localhost:5432/db', `postgres://app:${MASK}@localhost:5432/db`],
   ['password=', 'password=hunter2', `password=${MASK}`],
   ['env password', 'DB_PASSWORD=abc npm start', `DB_PASSWORD=${MASK} npm start`],
@@ -89,6 +93,10 @@ const untouched = [
   ['word after password:', 'password: Password'],
   ['prose after authorization:', 'authorization: role checks'],
   ['bearer in prose', 'Bearer bonds rally'],
+  ['long dashed word after authorization:', 'authorization: role-based-access-control-checks'],
+  ['long dashed word after Bearer', 'Bearer token-based-authentication-flow'],
+  ['code calling a function', 'const token = getToken()'],
+  ['code awaiting a call', 'token = await fetch(url)'],
   ['max_tokens', 'max_tokens=1024'],
   ['token_type', 'token_type=bearer'],
   ['secret_name', 'secret_name=prod'],
@@ -124,8 +132,14 @@ test('redactDeep masks nested strings and keeps keys and other values', () => {
   assert.deepEqual(out, { password: 'plain', list: [`using ${MASK}`, 3, null], nested: { ok: true, text: `token=${MASK}` } });
 });
 
+test('redactDeep drops values nested past its depth limit', () => {
+  let deep = 'token=abc';
+  for (let i = 0; i < 20; i++) deep = [deep];
+  assert.ok(!JSON.stringify(redactDeep({ x: deep })).includes('abc'));
+});
+
 test('worst-case inputs finish quickly', () => {
-  const size = 64 * 1024;
+  const size = 256 * 1024;
   for (const unit of ['sk-', 'curl -u ', 'token:', 'https://a:', 'authorization: ', 'a-']) {
     const start = performance.now();
     redact(unit.repeat(Math.ceil(size / unit.length)));
@@ -184,6 +198,9 @@ test('the server masks every text field before it stores or broadcasts the event
       for (const secret of secrets) assert.ok(!text.includes(secret), `${where} leaks ${secret}`);
       assert.ok(text.includes(MASK), `${where} has no mask`);
     }
+    const nested = await post({ type: 'status', agent: 'bot-3', extra: JSON.parse('['.repeat(5000) + ']'.repeat(5000)) });
+    assert.equal(nested.status, 202, 'deeply nested unknown fields do not reject the event');
+
     const agent = JSON.parse(state).agents['bot-1'];
     assert.equal(agent.name, `n ${MASK}`);
     assert.equal(agent.role, `r ${MASK}`);

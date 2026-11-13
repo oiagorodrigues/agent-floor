@@ -6,36 +6,44 @@
 // prefixes, so ids, hashes and file names pass through untouched.
 
 export const MASK = '[redacted]';
+const MAX_DEPTH = 8;
 
 const SECRET_NAME = String.raw`(?:password|passwd|token|secret|api[_-]?key|access[_-]?key)`;
 
 const quoted = (q) => `${q}${MASK}${q}`;
+const maskIfDigit = (match, pre, value) => (/\d/.test(value) ? pre + MASK : match);
 
 const RULES = [
   // Authorization: Bearer x / Basic x / token x, also in JSON or JS object form.
   [/\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?(?:bearer|basic|token|digest|negotiate)\s+)[^\s"',;]+/gi, `$1${MASK}`],
-  // Authorization: <raw token>. The length floor keeps prose like "authorization: role checks" intact.
-  [/\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?)[\w.~+/-]{16,}=*/gi, `$1${MASK}`],
-  [/\b(bearer\s+)[\w.~+/-]{16,}=*/gi, `$1${MASK}`],
-  // scheme://user:pass@host. Scheme starts only at a token start, so long runs cannot backtrack quadratically.
-  [/(?<![\w+.-])([a-z][a-z0-9+.-]{1,30}:\/\/[^\s:/@]+):[^\s@/]+@/gi, `$1:${MASK}@`],
+  // Authorization: <raw token> and a bare Bearer <token>. A raw token needs 16+ characters and a digit,
+  // so prose like "authorization: role-based-access-control" stays.
+  [/\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?)([\w.~+/-]{16,}=*)/gi, maskIfDigit],
+  [/\b(bearer\s+)([\w.~+/-]{16,}=*)/gi, maskIfDigit],
+  // scheme://user:pass@host and scheme://:pass@host. Scheme starts only at a token start, so long runs cannot backtrack quadratically.
+  [/(?<![\w+.-])([a-z][a-z0-9+.-]{1,30}:\/\/[^\s:/@]*):[^\s@/]+@/gi, `$1:${MASK}@`],
   // curl -u user:pass, --user user:pass, -uuser:pass, -u "user:pass". Scoped to curl so `docker run -u 1000:1000` stays.
   [
-    /(\bcurl\b[^\r\n|;&]{0,300}?\s(?:-u\s*|--user(?:\s+|=)))(?:"([^"\s:]+):[^"\r\n]*"|'([^'\s:]+):[^'\r\n]*'|([^\s:"'-][^\s:"']*):\S+)/g,
-    (_, pre, dq, sq, user) => (dq ? `${pre}"${dq}:${MASK}"` : sq ? `${pre}'${sq}:${MASK}'` : `${pre}${user}:${MASK}`),
+    /(\bcurl\b[^\r\n|;&]{0,300}?\s(?:-u\s*|--user(?:\s+|=)))(?:"([^"\s:]+):[^"\r\n]*"|'([^'\s:]+):[^'\r\n]*'|([^\s:"'-][^\s:"']*):("[^"\r\n]*"?|'[^'\r\n]*'?|\S+))/g,
+    (_, pre, dq, sq, user, pass) => {
+      if (dq) return `${pre}"${dq}:${MASK}"`;
+      if (sq) return `${pre}'${sq}:${MASK}'`;
+      return `${pre}${user}:${pass[0] === '"' || pass[0] === "'" ? quoted(pass[0]) : MASK}`;
+    },
   ],
   // password=x, GITHUB_TOKEN=x, "api_key": "x", client_secret: x.
   // The name must end with the secret word, so max_tokens, token_type and --key-file stay.
   [
     new RegExp(
-      String.raw`(?<![\w-])([\w-]{0,40}?${SECRET_NAME}["']?\s*([:=])\s*)(?:"([^"\r\n]*)"|'([^'\r\n]*)'|((?![=>$])[^\s"'&,;()<>{}\[\]]+))`,
+      String.raw`(?<![\w-])([\w-]{0,40}?${SECRET_NAME}["']?)(\s*[:=]\s*)(?:"([^"\r\n]*)"|'([^'\r\n]*)'|((?![=>$])[^\s"'&,;()<>{}\[\]]+))`,
       'gi',
     ),
-    (match, pre, sep, dq, sq, bare) => {
-      if (dq) return pre + quoted('"');
-      if (sq) return pre + quoted("'");
-      // Unquoted after a colon is often prose or a type ("token: string"), so it needs a digit to count.
-      if (bare && (sep === '=' || (bare.length >= 6 && /\d/.test(bare)))) return pre + MASK;
+    (match, name, sep, dq, sq, bare) => {
+      if (dq) return name + sep + quoted('"');
+      if (sq) return name + sep + quoted("'");
+      // Only a tight `=` is a shell or env assignment. An unquoted value after a colon or a spaced `=` is often
+      // prose or code ("token: string", "const token = getToken()"), so it needs a digit to count.
+      if (bare && (sep === '=' || (bare.length >= 6 && /\d/.test(bare)))) return name + sep + MASK;
       return match;
     },
   ],
@@ -54,12 +62,15 @@ export function redact(text) {
   return RULES.reduce((s, [re, to]) => s.replace(re, to), text);
 }
 
-/** Redacts every string inside a parsed JSON value. Keys are left as they are. */
-export function redactDeep(value) {
+/**
+ * Redacts every string inside a parsed JSON value. Keys are left as they are.
+ * Values nested deeper than MAX_DEPTH are dropped: normalizeEvent never reads them,
+ * and walking an absurdly nested body would overflow the stack.
+ */
+export function redactDeep(value, depth = 0) {
   if (typeof value === 'string') return redact(value);
-  if (Array.isArray(value)) return value.map(redactDeep);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactDeep(v)]));
-  }
-  return value;
+  if (!value || typeof value !== 'object') return value;
+  if (depth >= MAX_DEPTH) return undefined;
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactDeep(v, depth + 1)]));
 }
