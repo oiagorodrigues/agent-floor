@@ -5,6 +5,7 @@
 //   agent-floor hook <claude|codex|cursor>      used by agent hooks (reads stdin / argv)
 //   agent-floor emit --agent id --status working --activity "..."  [--team x] [--to id --text "..."]
 //   agent-floor setup <claude|codex|cursor> [--write] [--project]
+//   agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]
 //   agent-floor demo                             push a scripted demo into a running floor
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -12,7 +13,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { accountLabel, claudeConfigDirFor, claudeConfigDirs } from '../lib/accounts.mjs';
+import { accountLabel, claudeConfigDirFor, claudeSetupTargets } from '../lib/accounts.mjs';
 import { mergeClaudeHooks, mergeCursorHooks, updateJsonFile } from '../lib/settings.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -281,15 +282,24 @@ async function writeHooks(path, merge, opens) {
   else console.log(`Merged Agent Floor hooks into ${path}${backup ? ` (backup at ${backup})` : ''}. ${opens}`);
 }
 
+const SETUP_USAGE = 'Usage: agent-floor setup <claude|codex|cursor> [--write] [--project]\n       agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]';
+
 async function setup(args) {
   const f = flags(args);
   const kind = f._[0];
   if (kind === 'claude') {
-    // --project writes no --config-dir: the hook then tells accounts apart by
-    // CLAUDE_CONFIG_DIR or the folder rules in ~/.agent-floor/config.json.
-    const targets = f.project
-      ? [{ path: resolve('.claude/settings.json'), hooks: claudeHooks() }]
-      : claudeConfigDirs(localState.readConfig(), homedir()).map((dir) => ({ path: join(dir, 'settings.json'), hooks: claudeHooks(dir) }));
+    if (f.settings === true || f['config-dir'] === true) {
+      console.log(SETUP_USAGE);
+      process.exit(1);
+    }
+    const targets = claudeSetupTargets({
+      settingsFile: f.settings,
+      project: f.project,
+      configDir: f['config-dir'],
+      cwd: process.cwd(),
+      config: localState.readConfig(),
+      home: homedir(),
+    }).map(({ path, configDir }) => ({ path, hooks: claudeHooks(configDir) }));
     for (const { path, hooks } of targets) {
       if (!f.write) {
         console.log(`Add this to ${path} (or rerun with --write to merge it for you):\n`);
@@ -313,7 +323,7 @@ async function setup(args) {
     console.log(`notify = ["node", ${JSON.stringify(SELF)}, "hook", "codex"]\n`);
     console.log('Codex allows one notify program. If you already have one, chain them in a small script.');
   } else {
-    console.log('Usage: agent-floor setup <claude|codex|cursor> [--write] [--project]');
+    console.log(SETUP_USAGE);
     process.exit(1);
   }
 }
@@ -365,6 +375,7 @@ if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
   agent-floor                              open the desktop app (starts the floor too)
   agent-floor start [--port 4317] [--open] run the floor without a window
   agent-floor setup <claude|codex|cursor> [--write] [--project]
+  agent-floor setup claude --settings <file> [--config-dir <dir>] [--write]   (for claude --settings)
   agent-floor emit --agent <id> --status working --activity "Writing tests" [--team checkout]
   agent-floor demo [--agents 60]          (stress test with many agents)
   agent-floor hook <claude|codex|cursor>    (called by agent hooks)

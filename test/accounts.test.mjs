@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accountLabel, claudeConfigDirFor, claudeConfigDirs } from '../lib/accounts.mjs';
+import { accountLabel, claudeConfigDirFor, claudeConfigDirs, claudeSetupTargets } from '../lib/accounts.mjs';
 
 const home = '/Users/me';
 const config = {
@@ -16,6 +16,19 @@ const dirFor = (args) => claudeConfigDirFor({ config, home, ...args });
 test('setup targets the default dir plus every mapped dir, once each', () => {
   assert.deepEqual(claudeConfigDirs(config, home), ['/Users/me/.claude', '/Users/me/.claude-work']);
   assert.deepEqual(claudeConfigDirs({}, home), ['/Users/me/.claude']);
+});
+
+test('setup writes to a --settings file only, with the config dir when one is given', () => {
+  const targets = (args) => claudeSetupTargets({ cwd: '/repo', config, home, ...args });
+  assert.deepEqual(targets({ settingsFile: 'factory/settings.json' }), [{ path: '/repo/factory/settings.json', configDir: undefined }]);
+  assert.deepEqual(targets({ settingsFile: '/etc/run.json', configDir: '~/.claude-work' }), [
+    { path: '/etc/run.json', configDir: '/Users/me/.claude-work' },
+  ]);
+  assert.deepEqual(targets({ project: true }), [{ path: '/repo/.claude/settings.json', configDir: undefined }]);
+  assert.deepEqual(targets({}), [
+    { path: '/Users/me/.claude/settings.json', configDir: '/Users/me/.claude' },
+    { path: '/Users/me/.claude-work/settings.json', configDir: '/Users/me/.claude-work' },
+  ]);
 });
 
 test('folder rules map cwd to an account, nested rules first, default otherwise', () => {

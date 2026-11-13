@@ -71,6 +71,18 @@ If you use more than one Claude config dir (`CLAUDE_CONFIG_DIR`), list them in `
 
 The hooks installed by `setup` know their config dir. Hooks from `--project` use `CLAUDE_CONFIG_DIR` and then the `byPath` folder rules.
 
+#### Headless runs (`claude -p`)
+
+Scripted runs often skip user settings (`--setting-sources project`) to keep their context small, which also skips the hooks above. Put the hooks in a settings file of their own and pass it with `--settings`:
+
+```bash
+agent-floor setup claude --settings run-settings.json --write
+AGENT_FLOOR_AUTOLAUNCH=0 AGENT_FLOOR_TEAM=ABC-123 AGENT_FLOOR_NAME=plan \
+  claude -p "..." --setting-sources project --settings run-settings.json
+```
+
+The file can already hold other settings; only Agent Floor's hooks are added or replaced. Add `--config-dir <dir>` to tag the account, otherwise the hook uses `CLAUDE_CONFIG_DIR` and the `byPath` rules. `--bare` skips every hook, including ones passed with `--settings`.
+
 Uses `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStop`, `PreCompact` and `SessionEnd`. Subagents spawned with the Task tool get their own desks and their tool calls show up on their own screens.
 
 ### Codex
