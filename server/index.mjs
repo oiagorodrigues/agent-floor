@@ -14,7 +14,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import localState from '../desktop/state.cjs';
-import { applyEvent, createState, normalizeEvent, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
+import { applyEvent, createState, deskOf, normalizeEvent, sweep, PROTOCOL_VERSION } from '../shared/protocol.js';
 import { pickName } from './names.mjs';
 import { redactDeep } from './redact.mjs';
 
@@ -54,7 +54,7 @@ export function startServer({
   // Hook adapters send the same name ("Claude") for every session, so the floor
   // gives each of their agents its own first name and keeps it for its lifetime.
   function nameAgent(ev) {
-    const existing = state.agents[ev.agent];
+    const existing = state.agents[deskOf(state, ev.agent)];
     if (existing) {
       if (ev.name && HOOK_SOURCES.has(existing.source)) ev.name = existing.name;
     } else if (HOOK_SOURCES.has(ev.source)) {

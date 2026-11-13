@@ -26,6 +26,8 @@ Only `type` and `agent` are required. Any event creates the agent and its team i
 | `text` | string | Message text, shown in a speech bubble over the sender. |
 | `task` | string | For `task` events: written on the team whiteboard. |
 | `subagent` | `{ key?, type? }` | For adapters that only know "a subagent of type X". See below. |
+| `stage` | string, up to 24 chars | A pipeline label shown on the name tag and card, e.g. `Stage 2`. Send `""` to clear it. |
+| `stay` | boolean | On `join` with a `parent`: keep this helper at its desk after it finishes, until its parent leaves. See below. |
 | `ts` | number (ms) | Optional timestamp. Defaults to now. |
 
 ## Event types
@@ -40,7 +42,7 @@ Only `type` and `agent` are required. Any event creates the agent and its team i
 
 ## Lifetime
 
-The server forgets agents that have left after 6 seconds, helpers (agents with a `parent`) 45 seconds after they finish with `done`, and anything silent for 2 hours. Empty rooms disappear with their last agent.
+The server forgets agents that have left after 6 seconds, helpers (agents with a `parent`) 45 seconds after they finish with `done` (unless they joined with `stay`, in which case they leave with their parent), and anything silent for 2 hours. Empty rooms disappear with their last agent.
 
 ## Subagent hints
 
@@ -51,6 +53,10 @@ Some tools tell you a tool call happened inside "a subagent of type `code-review
 ```
 
 The floor binds the hint to the oldest unbound helper of that `role` under `lead-1`, and remembers the key so later events land on the same desk. If there is no such helper, it opens a new desk.
+
+## Helpers that stay
+
+A helper that joined with `stay: true` is not removed when it finishes. When its parent leaves, it leaves too. If the same parent later sends a `join` for a new id with the same `role` while that helper is `done`, the floor reuses the helper's desk, keeps its name and takes the `stage` from the new join: the new id becomes an alias, and every later event for it lands on that desk. The aliases are in `state.aliases` (new id to desk id). A helper that is still busy is never reused, so parallel helpers of one role each get a desk. A helper that stays silent for 2 hours is still removed.
 
 ## Reading state
 

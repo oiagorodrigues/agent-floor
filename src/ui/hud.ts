@@ -32,6 +32,7 @@ interface Tag {
   name: HTMLElement;
   role: HTMLElement;
   machine: HTMLElement;
+  stage: HTMLElement;
   dot: HTMLElement;
   activity: HTMLElement;
   key: string;
@@ -324,7 +325,7 @@ export class Hud {
       this.cardKey = '';
       return;
     }
-    const key = `${a.id}|${a.status}|${a.activity}|${a.history.length}|${a.history.at(-1)?.ts}|${Math.floor(Date.now() / 10000)}`;
+    const key = `${a.id}|${a.status}|${a.activity}|${a.stage ?? ''}|${a.history.length}|${a.history.at(-1)?.ts}|${Math.floor(Date.now() / 10000)}`;
     if (key === this.cardKey) return;
     this.cardKey = key;
     const team = s.teams[a.team];
@@ -339,7 +340,7 @@ export class Hud {
         <span class="avatar" style="--shirt:${shirtFor(a.role)};--skin:${look.skin};--hair:${look.hair}" aria-hidden="true"><i></i></span>
         <div class="who">
           <h2>${esc(a.name)}</h2>
-          <p>${esc(a.role)} in ${esc(team?.name || a.team)}${a.machine ? ` on ${esc(a.machine)}` : ''}</p>
+          <p>${a.stage ? `<span class="card-stage">${esc(a.stage)}</span>` : ''}${esc(a.role)} in ${esc(team?.name || a.team)}${a.machine ? ` on ${esc(a.machine)}` : ''}</p>
         </div>
         <button type="button" class="icon-btn close" aria-label="Close">${icon('x')}</button>
       </div>
@@ -444,7 +445,7 @@ export class Hud {
 
   private makeTag(agent: Agent): Tag {
     const root = el('div', 'tag');
-    root.innerHTML = `<div class="tag-line"><span class="dot"></span><b></b><span class="role"></span><span class="machine" hidden></span></div><div class="activity"></div>`;
+    root.innerHTML = `<div class="tag-line"><span class="dot"></span><span class="tag-stage" hidden></span><b></b><span class="role"></span><span class="machine" hidden></span></div><div class="activity"></div>`;
     root.addEventListener('click', () => this.actions.select(agent.id));
     this.tagsLayer.append(root);
     const tag: Tag = {
@@ -452,6 +453,7 @@ export class Hud {
       name: root.querySelector('b')!,
       role: root.querySelector('.role')!,
       machine: root.querySelector('.machine')!,
+      stage: root.querySelector('.tag-stage')!,
       dot: root.querySelector('.dot')!,
       activity: root.querySelector('.activity')!,
       key: '',
@@ -462,10 +464,12 @@ export class Hud {
   }
 
   private updateTag(tag: Tag, a: Agent) {
-    const key = `${a.name}|${a.role}|${a.machine}|${a.status}|${a.activity}`;
+    const key = `${a.name}|${a.role}|${a.machine}|${a.status}|${a.activity}|${a.stage ?? ''}`;
     if (key === tag.key) return;
     tag.key = key;
     tag.name.textContent = a.name;
+    tag.stage.textContent = a.stage || '';
+    tag.stage.hidden = !a.stage;
     tag.role.textContent = a.role.toLowerCase() === a.name.toLowerCase() ? '' : a.role;
     tag.machine.textContent = a.machine ?? '';
     tag.machine.hidden = !a.machine;

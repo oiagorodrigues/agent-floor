@@ -85,6 +85,18 @@ The file can already hold other settings; only Agent Floor's hooks are added or 
 
 Uses `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStop`, `PreCompact` and `SessionEnd`. Subagents spawned with the Task tool get their own desks and their tool calls show up on their own screens.
 
+#### Pipelines and crews
+
+When a subagent's description names a stage ("Stage 2 - write the script"), its name tag and card show a `Stage 2` label. The prompt is read for a stage only when `AGENT_FLOOR_SHARE_PROMPTS=1`.
+
+For a staged pipeline, where a lead hands work to a researcher, a writer and a checker, start Claude Code with crew mode on:
+
+```bash
+AGENT_FLOOR_CREW=1 claude
+```
+
+In crew mode, subagents stay at their desks after they finish, so the whole crew is on screen until the session ends. When the lead sends the same kind of subagent again, it is briefed at the desk it already has instead of a new one.
+
 ### Codex
 
 ```bash
@@ -160,6 +172,7 @@ The full event format is in [docs/protocol.md](docs/protocol.md). More integrati
 | `AGENT_FLOOR_NAME` | `Claude`, `Codex`, `Cursor`, `Hermes`, `OpenCode`, `Pi` | hooks: the lead's display name |
 | `AGENT_FLOOR_MACHINE` | unset | hooks: this computer's name, shown as a badge on its agents' name tags and as "on work-laptop" on the agent card |
 | `AGENT_FLOOR_AUTOLAUNCH` | `1` | set to `0` so hooks never open the app |
+| `AGENT_FLOOR_CREW` | `0` | hooks: set to `1` to keep finished subagents at their desks until the session ends, and reuse a desk when the same kind of subagent is spawned again |
 | `AGENT_FLOOR_SHARE_PROMPTS` | `0` | set to `1` to show your prompts, replies and agent thoughts on the floor |
 | `AGENT_FLOOR_RANDOM_NAMES` | `1` | server: Claude Code, Codex and Cursor agents get a random first name, unique on the floor; `0` keeps the adapter's name |
 | `AGENT_FLOOR_APP` | `desktop` | `browser` opens the floor in a normal browser tab instead of the Electron window. Same as `"app": "browser"` in `~/.agent-floor/config.json` |

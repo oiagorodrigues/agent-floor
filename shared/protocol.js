@@ -12,7 +12,7 @@ const MAX_HISTORY = 24;
 const MAX_TEXT = 280;
 
 export function createState() {
-  return { teams: {}, agents: {}, seq: 0, updatedAt: 0 };
+  return { teams: {}, agents: {}, aliases: {}, seq: 0, updatedAt: 0 };
 }
 
 export function slug(value) {
@@ -69,6 +69,8 @@ export function normalizeEvent(raw, now = Date.now()) {
     tool: clip(raw.tool, 40),
     text: clip(raw.text),
     task: clip(raw.task, 120),
+    stage: clip(raw.stage, 24),
+    stay: raw.stay === true || undefined,
     to: undefined,
     subagent: undefined,
   };
@@ -130,6 +132,8 @@ function ensureAgent(state, ev, now) {
       lastSeen: now,
       history: [],
       boundKey: undefined,
+      stage: undefined,
+      stay: undefined,
     };
   } else {
     if (ev.name) agent.name = ev.name;
@@ -141,6 +145,8 @@ function ensureAgent(state, ev, now) {
     if (ev.team && ev.team !== agent.team) agent.team = ev.team;
     agent.lastSeen = now;
   }
+  if (ev.stage !== undefined) agent.stage = ev.stage || undefined;
+  if (ev.stay) agent.stay = true;
   return agent;
 }
 
@@ -170,6 +176,39 @@ function resolveSubagent(state, ev) {
   return next;
 }
 
+/**
+ * A helper kept at its desk (`stay`) is reused when the same parent spawns the
+ * same role again after it finished: the new spawn id becomes an alias for that
+ * desk, and every later event for either id lands there.
+ */
+function applyAliases(state, ev) {
+  const aliases = (state.aliases ||= {});
+  if (ev.type === 'join' && ev.parent && ev.role && !state.agents[ev.agent] && !aliases[ev.agent]) {
+    const parent = aliases[ev.parent] || ev.parent;
+    const reuse = Object.values(state.agents).find(
+      (a) => a.parent === parent && a.stay && a.role === ev.role && a.status === 'done',
+    );
+    if (reuse) {
+      aliases[ev.agent] = reuse.id;
+      reuse.boundKey = undefined;
+      reuse.stage = undefined;
+      // The desk keeps the name it already has.
+      const { name, ...rest } = ev;
+      ev = rest;
+    }
+  }
+  const map = (id) => aliases[id] || id;
+  const out = { ...ev, agent: map(ev.agent) };
+  if (ev.parent) out.parent = map(ev.parent);
+  if (ev.to) out.to = ev.to.map(map);
+  return out;
+}
+
+/** The desk an agent id lands on, after aliases from reused helpers. */
+export function deskOf(state, id) {
+  return state.aliases?.[id] || id;
+}
+
 function pushHistory(agent, entry) {
   agent.history.push(entry);
   if (agent.history.length > MAX_HISTORY) agent.history.splice(0, agent.history.length - MAX_HISTORY);
@@ -189,11 +228,12 @@ export function applyEvent(state, rawEv) {
   if (rawEv.type === 'reset') {
     state.teams = {};
     state.agents = {};
+    state.aliases = {};
     effects.push({ kind: 'reset' });
     return { state, effects };
   }
 
-  const ev = resolveSubagent(state, rawEv);
+  const ev = resolveSubagent(state, applyAliases(state, rawEv));
   const existed = Boolean(state.agents[ev.agent]);
   const agent = ensureAgent(state, ev, now);
   if (ev.__bindKey) agent.boundKey = ev.__bindKey;
@@ -250,6 +290,16 @@ export function applyEvent(state, rawEv) {
       agent.activity = ev.activity || 'Left';
       effects.push({ kind: 'leave', agent: agent.id });
       pushHistory(agent, { ts: now, kind: 'leave', text: agent.activity });
+      // Helpers kept at their desks go home with whoever brought them.
+      for (const kid of Object.values(state.agents)) {
+        if (kid.parent !== agent.id || !kid.stay || kid.status === 'offline') continue;
+        kid.status = 'offline';
+        kid.tool = undefined;
+        kid.activity = 'Left';
+        kid.lastSeen = now;
+        effects.push({ kind: 'leave', agent: kid.id });
+        pushHistory(kid, { ts: now, kind: 'leave', text: 'Left' });
+      }
       break;
     }
   }
@@ -258,26 +308,38 @@ export function applyEvent(state, rawEv) {
 
 /**
  * Drop offline agents after a short grace period, finished helpers (agents with a
- * parent) after they have had time to celebrate, and anything silent for hours.
+ * parent) after they have had time to celebrate unless they `stay`, and anything
+ * silent for hours.
  */
 export function sweep(
   state,
   now = Date.now(),
   { offlineMs = 6_000, doneHelperMs = 45_000, staleMs = 2 * 60 * 60_000 } = {},
 ) {
-  const removed = [];
+  const expired = [];
   for (const a of Object.values(state.agents)) {
     const age = now - a.lastSeen;
     if (
       (a.status === 'offline' && age > offlineMs) ||
-      (a.status === 'done' && a.parent && age > doneHelperMs) ||
+      (a.status === 'done' && a.parent && !a.stay && age > doneHelperMs) ||
       age > staleMs
     ) {
-      delete state.agents[a.id];
-      removed.push(a.id);
+      expired.push(a.id);
     }
+  }
+  return removeAgents(state, expired);
+}
+
+/** Remove agents along with the rooms and aliases they leave empty. Returns the ids that were there. */
+export function removeAgents(state, ids) {
+  const removed = [];
+  for (const id of ids) {
+    if (!state.agents[id]) continue;
+    delete state.agents[id];
+    removed.push(id);
   }
   const used = new Set(Object.values(state.agents).map((a) => a.team));
   for (const id of Object.keys(state.teams)) if (!used.has(id)) delete state.teams[id];
+  if (state.aliases) for (const [k, v] of Object.entries(state.aliases)) if (!state.agents[v]) delete state.aliases[k];
   return removed;
 }

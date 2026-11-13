@@ -1,4 +1,4 @@
-import { applyEvent, createState, normalizeEvent, sweep } from '../../shared/protocol.js';
+import { applyEvent, createState, normalizeEvent, removeAgents, sweep } from '../../shared/protocol.js';
 import type { Effect, FloorEvent, InboundEvent, WorldState } from '../../shared/protocol';
 
 export type ConnectionMode = 'connecting' | 'live' | 'demo' | 'offline';
@@ -71,17 +71,9 @@ class Store {
   }
 
   remove(ids: string[]) {
-    let changed = false;
-    for (const id of ids) {
-      if (this.state.agents[id]) {
-        delete this.state.agents[id];
-        changed = true;
-      }
-    }
-    const used = new Set(Object.values(this.state.agents).map((a) => a.team));
-    for (const id of Object.keys(this.state.teams)) if (!used.has(id)) delete this.state.teams[id];
+    const removed = removeAgents(this.state, ids);
     if (this.selected && !this.state.agents[this.selected]) this.selected = null;
-    if (changed) this.emit();
+    if (removed.length) this.emit();
   }
 
   sweepLocal() {
