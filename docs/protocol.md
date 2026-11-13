@@ -58,5 +58,6 @@ The floor binds the hint to the oldest unbound helper of that `role` under `lead
 - `GET /state`: the current world as JSON.
 - `GET /health`: `{ ok, version, agents }`.
 - `POST /reset`: clear the floor. Needs the token like `/events`.
+- `POST /shutdown`: stop the floor (what `agent-floor stop` sends). Needs the token like `/events`.
 
 The reducer that turns events into state is `shared/protocol.js`. It has no dependencies, so you can import it to build other views on the same stream.

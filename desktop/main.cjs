@@ -37,7 +37,8 @@ if (!app.requestSingleInstanceLock()) {
   async function ensureServer() {
     if (await serverIsUp()) return;
     const { startServer } = await import(pathToFileURL(path.join(__dirname, '../server/index.mjs')).href);
-    floor = await startServer({ port: PORT, log: () => {} });
+    // `agent-floor stop` closes the in-process server; the app goes with it.
+    floor = await startServer({ port: PORT, log: () => {}, onShutdown: () => app.quit() });
   }
 
   function createWindow() {
