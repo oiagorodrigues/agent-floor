@@ -147,6 +147,7 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 - The server sends no CORS headers, so pages on other origins, other localhost ports included, cannot read the stream or post to it.
 - Every `POST` needs `Authorization: Bearer <token>`. The token is created in `~/.agent-floor/token` with owner-only permissions, so other users on the machine cannot post events.
 - Prompts, replies and agent thoughts stay off the floor unless you set `AGENT_FLOOR_SHARE_PROMPTS=1`. Tool activity ("Running npm test", "Editing cart.ts") is still shown.
+- The server masks secrets in every event, whether it comes from a hook, `agent-floor emit` or your own POST, before it reaches the floor. It catches tokens with a known prefix (`ghp_`, `gho_`, `github_pat_`, `sk-`, `sk-ant-`, `xoxb-`, `xoxp-`, `AKIA`, JWTs), `Authorization` headers, `curl -u user:pass`, passwords in URLs, and values labelled `password`, `passwd`, `token`, `secret`, `api_key`, `apikey` or `access_key`. The secret becomes `[redacted]` and its label stays, so `GITHUB_TOKEN=ghp_…` shows as `GITHUB_TOKEN=[redacted]`. Masking matches patterns, so a secret in an unknown format, or an unquoted `password: word` without a digit, can still show.
 - Hooks time out after 1.2 seconds, swallow every error and always exit 0. If the floor is down, your agents never notice.
 - Nothing is stored on disk and nothing is sent anywhere else. Activity text is clipped to 280 characters.
 
