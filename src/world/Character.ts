@@ -1,5 +1,6 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Object3D, RingGeometry, Sprite, SpriteMaterial, TorusGeometry, Vector3, type Material } from 'three';
 import { Kit } from './kit';
+import type { Crowd, CrowdPart } from './crowd';
 import type { Agent, Status } from '../../shared/protocol';
 import { clay, G } from './materials';
 import { looksFor, shirtFor, STATUS_COLORS } from './palette';
@@ -111,9 +112,12 @@ export class Character {
   private gestureUntil = 0;
   private phase: number;
   private onGone?: () => void;
+  private crowd: Crowd;
+  private parts: CrowdPart[] = [];
 
-  constructor(agent: Agent) {
+  constructor(agent: Agent, crowd: Crowd) {
     this.id = agent.id;
+    this.crowd = crowd;
     const look = looksFor(agent.id);
     this.phase = (look.hairStyle + 1) * 1.7;
     const shirt = clay(shirtFor(agent.role));
@@ -122,12 +126,12 @@ export class Character {
     const pants = clay(look.pants);
     const dark = clay('#1d1f24', { roughness: 0.4 });
 
-    // Every moving part is batched into a single mesh (colours baked into
-    // vertices), so a character costs ~9 draws instead of ~35.
+    // Every moving part is merged (colours baked into vertices) and handed to
+    // the crowd batch, which draws all characters in two calls (see crowd.ts).
     const bake = (target: Group, describe: (k: Kit) => void) => {
       const k = new Kit();
       describe(k);
-      target.add(k.build());
+      this.parts.push(...crowd.add(target, k.build()));
     };
 
     // Torso: shirt capsule with a little collar of skin.
@@ -497,6 +501,7 @@ export class Character {
   }
 
   dispose() {
+    this.crowd.remove(this.parts);
     this.statusMat.dispose();
     (this.selectRing.material as Material).dispose();
     this.root.removeFromParent();

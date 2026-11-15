@@ -31,6 +31,7 @@ Open http://localhost:5173. Add `?demo` to run the demo inside the browser witho
 | `src/world/kit.ts` | Static batching: merges a room's furniture into one mesh per material. Add props here, not as separate meshes. |
 | `src/world/textures.ts` | Procedural canvas textures (wood, carpet, terrazzo, grass, posters). No image files. |
 | `src/world/Character.ts` | The clay figures and every pose: typing, thinking, waving, walking. |
+| `src/world/crowd.ts` | Dynamic batching for the characters: every moving part is one instance that follows its pivot, so all characters draw in two calls. |
 | `src/world/Workstation.ts`, `Screen.ts` | Desks and the live monitor canvas. |
 | `src/world/TeamRoom.ts` | One team's office: carpet, rug, furniture, whiteboard, door signs. |
 | `src/world/Courier.ts` | Paper planes and landing ripples. |
