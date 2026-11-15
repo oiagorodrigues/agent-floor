@@ -5,7 +5,7 @@
 // stdin, with event-specific fields (user_message, ...) under `extra`. The shape
 // is close to Claude Code's, so the payload is renamed and handed to fromClaude.
 // https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks#shell-hooks
-import { fromClaude } from './claude.mjs';
+import { fromClaude } from '../claude/adapter.mjs';
 
 /** The Hermes events `agent-floor setup hermes` subscribes to, and the Claude Code hook each one acts as. */
 export const HERMES_EVENTS = {
@@ -42,7 +42,7 @@ function sessionKey(id) {
 /**
  * @param {Record<string, any>} input hook payload from stdin
  * @param {{ sharePrompts?: boolean }} [opts]
- * @returns {import('../shared/protocol.js').InboundEvent[]}
+ * @returns {import('../../shared/protocol.js').InboundEvent[]}
  */
 export function fromHermes(input, opts = {}) {
   if (!input || typeof input !== 'object') return [];

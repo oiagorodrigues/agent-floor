@@ -4,11 +4,11 @@
 // runs inside this process unless one is already running. The window can be
 // closed; the app keeps listening from the menu bar / system tray so hooks
 // never have to relaunch it. "Quit" pauses auto-launch for a while.
-const { app, BrowserWindow, Menu, Tray, nativeImage, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell, nativeTheme } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { markPng } = require('./icon.cjs');
-const { DIR, snooze } = require('./state.cjs');
+const { CONFIG, DIR, snooze } = require('./state.cjs');
 
 const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
 const URL = `http://127.0.0.1:${PORT}/?app=1`;
@@ -24,6 +24,7 @@ if (!app.requestSingleInstanceLock()) {
   let tray = null;
   let floor = null;
   let quitting = false;
+  let started = false;
 
   async function serverIsUp() {
     try {
@@ -31,6 +32,20 @@ if (!app.requestSingleInstanceLock()) {
       return res.ok;
     } catch {
       return false;
+    }
+  }
+
+  // The check `agent-floor` and `agent-floor start` run first. Without it, a config.json
+  // in an old shape keeps the app open while Claude hooks drop every session.
+  async function configProblem() {
+    const load = (file) => import(pathToFileURL(path.join(__dirname, file)).href);
+    const [{ ConfigError, loadConfig }, { AGENTS }] = await Promise.all([load('../lib/config.mjs'), load('../integrations/index.mjs')]);
+    try {
+      loadConfig(AGENTS);
+      return null;
+    } catch (err) {
+      if (err instanceof ConfigError) return err.message;
+      throw err;
     }
   }
 
@@ -120,8 +135,9 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', createWindow);
   }
 
-  app.on('second-instance', createWindow);
-  app.on('activate', createWindow);
+  // Dock clicks and new launches wait for startup, so they can't open a window with no floor behind it.
+  app.on('second-instance', () => started && createWindow());
+  app.on('activate', () => started && createWindow());
   app.on('before-quit', () => (quitting = true));
   app.on('window-all-closed', () => {
     /* keep running in the tray */
@@ -138,7 +154,23 @@ if (!app.requestSingleInstanceLock()) {
         { role: 'windowMenu' },
       ]),
     );
+    const problem = await configProblem();
+    if (problem) {
+      const { response } = await dialog.showMessageBox({
+        type: 'error',
+        message: 'Agent Floor did not start',
+        detail: problem,
+        buttons: ['Open config.json', 'Quit'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response === 0) await shell.openPath(CONFIG);
+      quitting = true;
+      app.quit();
+      return;
+    }
     await ensureServer();
+    started = true;
     createTray();
     createWindow();
   });
