@@ -239,7 +239,7 @@ The floor itself (the 3D scene) costs the same CPU and GPU in Electron or in a b
 
 - `agent-floor stop` stops the running floor, whether it runs in the background from `agent-floor start` or browser mode, or inside the desktop app. When the desktop app started the floor, the app quits too. Hooks then wait 6 hours before they open the floor again, so the next agent event doesn't bring it straight back. Run `agent-floor` to open it yourself.
 - `agent-floor quiet [hours]` stops hooks from opening the floor for that many hours (6 by default). A floor that is already running stays up and keeps showing your agents.
-- When `~/.agent-floor/config.json` is not valid JSON or still has an agent section at the top level, the app shows what to change and quits instead of opening the floor, the same way `agent-floor` and `agent-floor start` stop.
+- When `~/.agent-floor/config.json` is not valid JSON or still has an agent section at the top level, the app shows what to change and quits instead of opening the floor, the same way `agent-floor` and `agent-floor start` stop. When an agent hook opens the app, it shows each problem once; opening the app yourself always shows it.
 
 ## Performance
 
