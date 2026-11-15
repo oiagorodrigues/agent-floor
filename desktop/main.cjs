@@ -8,7 +8,7 @@ const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell, nativeTheme 
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { markPng } = require('./icon.cjs');
-const { CONFIG, DIR, snooze } = require('./state.cjs');
+const { CONFIG, DIR, alreadyWarned, rememberWarning, snooze } = require('./state.cjs');
 
 const PORT = Number(process.env.AGENT_FLOOR_PORT) || 4317;
 const URL = `http://127.0.0.1:${PORT}/?app=1`;
@@ -156,6 +156,14 @@ if (!app.requestSingleInstanceLock()) {
     );
     const problem = await configProblem();
     if (problem) {
+      // Hooks relaunch the app on every agent event, so each problem reaches them as one dialog.
+      // Opening the app yourself always shows it.
+      if (startedByHook && alreadyWarned(problem)) {
+        quitting = true;
+        app.quit();
+        return;
+      }
+      rememberWarning(problem);
       const { response } = await dialog.showMessageBox({
         type: 'error',
         message: 'Agent Floor did not start',
@@ -169,6 +177,7 @@ if (!app.requestSingleInstanceLock()) {
       app.quit();
       return;
     }
+    rememberWarning(null);
     await ensureServer();
     started = true;
     createTray();

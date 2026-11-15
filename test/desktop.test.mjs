@@ -56,17 +56,22 @@ async function freePort() {
   return port;
 }
 
-async function runApp(config, { dialogResponse = 1 } = {}) {
+async function tempHome() {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'af-desktop-')));
+  await mkdir(join(home, '.agent-floor'));
+  return home;
+}
+
+async function runApp(config, { dialogResponse = 1, fromHook = false, home } = {}) {
+  home ??= await tempHome();
   const floorHome = join(home, '.agent-floor');
-  await mkdir(floorHome);
   await writeFile(join(floorHome, 'config.json'), JSON.stringify(config));
   const preload = join(home, 'fake-electron.cjs');
   await writeFile(preload, FAKE_ELECTRON);
   const port = await freePort();
   const env = { PATH: process.env.PATH, HOME: home, AGENT_FLOOR_HOME: floorHome, AGENT_FLOOR_PORT: String(port), FAKE_DIALOG_RESPONSE: String(dialogResponse) };
   return new Promise((done, fail) => {
-    const child = spawn(process.execPath, ['--require', preload, MAIN], { env, stdio: 'pipe' });
+    const child = spawn(process.execPath, ['--require', preload, MAIN, ...(fromHook ? ['--from-hook'] : [])], { env, stdio: 'pipe' });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -106,4 +111,22 @@ test('"Open config.json" in that dialog opens the file before the app quits', as
     calls.map(({ type, path }) => (path ? { type, path } : { type })),
     [{ type: 'dialog' }, { type: 'openPath', path: configPath }, { type: 'quit' }],
   );
+});
+
+const types = (calls) => calls.map(({ type }) => type);
+
+test('hook launches show each config problem once, and again once the file changes', async () => {
+  const home = await tempHome();
+  assert.deepEqual(types((await runApp(OLD_CONFIG, { home, fromHook: true })).calls), ['dialog', 'quit']);
+  assert.deepEqual(types((await runApp(OLD_CONFIG, { home, fromHook: true })).calls), ['quit'], 'same problem: no dialog');
+  const edited = { ...OLD_CONFIG, app: 'browser' };
+  assert.deepEqual(types((await runApp(edited, { home, fromHook: true })).calls), ['dialog', 'quit'], 'edited file, still wrong');
+  assert.deepEqual(types((await runApp(edited, { home })).calls), ['dialog', 'quit'], 'opening the app yourself always shows it');
+});
+
+test('a fixed config.json makes the next problem show again, even if it is the same one', async () => {
+  const home = await tempHome();
+  await runApp(OLD_CONFIG, { home, fromHook: true });
+  assert.deepEqual(types((await runApp(MOVED_CONFIG, { home, fromHook: true })).calls), ['window']);
+  assert.deepEqual(types((await runApp(OLD_CONFIG, { home, fromHook: true })).calls), ['dialog', 'quit']);
 });

@@ -9,6 +9,7 @@ const SNOOZE = path.join(DIR, 'snoozed-until');
 const LOCK = path.join(DIR, 'launch.lock');
 const TOKEN = path.join(DIR, 'token');
 const CONFIG = path.join(DIR, 'config.json');
+const WARNED = path.join(DIR, 'config-warned');
 
 function ensureDir() {
   fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
@@ -39,6 +40,25 @@ function readConfig() {
     throw err;
   }
   return JSON.parse(text);
+}
+
+const digest = (text) => crypto.createHash('sha256').update(text).digest('hex');
+
+/** True when the app already showed this config problem, so a hook relaunch can skip the dialog. */
+function alreadyWarned(problem) {
+  try {
+    return fs.readFileSync(WARNED, 'utf8') === digest(problem);
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+/** Remembers the config problem the app just showed; null forgets it once the file is fixed. */
+function rememberWarning(problem) {
+  ensureDir();
+  if (problem) fs.writeFileSync(WARNED, digest(problem));
+  else fs.rmSync(WARNED, { force: true });
 }
 
 /** Stop hooks from opening the app for `hours`. */
@@ -76,4 +96,4 @@ function takeLaunchLock(staleMs = 20_000) {
   }
 }
 
-module.exports = { DIR, CONFIG, snooze, isSnoozed, takeLaunchLock, readToken, readConfig };
+module.exports = { DIR, CONFIG, snooze, isSnoozed, takeLaunchLock, readToken, readConfig, alreadyWarned, rememberWarning };
